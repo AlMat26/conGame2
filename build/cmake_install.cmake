@@ -61,6 +61,7 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
   include("/home/alexey/projects/conGame/build/ConRender/cmake_install.cmake")
+  include("/home/alexey/projects/conGame/build/Network/cmake_install.cmake")
 
 endif()
 

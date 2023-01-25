@@ -8,10 +8,11 @@
 					"build" : ".",
 					"childIndexes" : 
 					[
-						1
+						1,
+						2
 					],
 					"hasInstallRule" : true,
-					"jsonFile" : "directory-.-Debug-6a8b38404add2573bbf3.json",
+					"jsonFile" : "directory-.-Debug-a5f584e53608da55ddbe.json",
 					"minimumCMakeVersion" : 
 					{
 						"string" : "3.0"
@@ -37,6 +38,21 @@
 					[
 						1
 					]
+				},
+				{
+					"build" : "Network",
+					"jsonFile" : "directory-Network-Debug-a050a440e45405a3b391.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.0"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 2,
+					"source" : "Network",
+					"targetIndexes" : 
+					[
+						2
+					]
 				}
 			],
 			"name" : "Debug",
@@ -45,7 +61,8 @@
 				{
 					"childIndexes" : 
 					[
-						1
+						1,
+						2
 					],
 					"directoryIndexes" : 
 					[
@@ -68,6 +85,18 @@
 					[
 						1
 					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						2
+					],
+					"name" : "networklib",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						2
+					]
 				}
 			],
 			"targets" : 
@@ -75,16 +104,23 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "congame::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-congame-Debug-2a72fd296d26375ef86d.json",
+					"jsonFile" : "target-congame-Debug-f3cbc35153e93dcfc89b.json",
 					"name" : "congame",
 					"projectIndex" : 0
 				},
 				{
 					"directoryIndex" : 1,
 					"id" : "conrenderlib::@7189a70f20f44bb29909",
-					"jsonFile" : "target-conrenderlib-Debug-1c2ae06357853e0f7753.json",
+					"jsonFile" : "target-conrenderlib-Debug-cea640065a863f8c6e28.json",
 					"name" : "conrenderlib",
 					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "networklib::@2ce5434ecf0d5818020e",
+					"jsonFile" : "target-networklib-Debug-c2647ed27b6c91d06d9b.json",
+					"name" : "networklib",
+					"projectIndex" : 2
 				}
 			]
 		}

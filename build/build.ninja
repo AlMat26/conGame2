@@ -47,7 +47,7 @@ cmake_ninja_workdir = /home/alexey/projects/conGame/build/
 #############################################
 # Order-only phony target for congame
 
-build cmake_object_order_depends_target_congame: phony || cmake_object_order_depends_target_conrenderlib
+build cmake_object_order_depends_target_congame: phony || cmake_object_order_depends_target_conrenderlib cmake_object_order_depends_target_networklib
 
 build CMakeFiles/congame.dir/main.cpp.o: CXX_COMPILER__congame_Debug /home/alexey/projects/conGame/main.cpp || cmake_object_order_depends_target_congame
   DEFINES = -DBOOST_SYSTEM_DYN_LINK -DBOOST_SYSTEM_NO_LIB
@@ -64,10 +64,10 @@ build CMakeFiles/congame.dir/main.cpp.o: CXX_COMPILER__congame_Debug /home/alexe
 #############################################
 # Link the executable congame
 
-build congame: CXX_EXECUTABLE_LINKER__congame_Debug CMakeFiles/congame.dir/main.cpp.o | ConRender/libconrenderlib.a /usr/lib/libboost_system.so.1.81.0 || ConRender/libconrenderlib.a
+build congame: CXX_EXECUTABLE_LINKER__congame_Debug CMakeFiles/congame.dir/main.cpp.o | ConRender/libconrenderlib.a Network/libnetworklib.a /usr/lib/libboost_system.so.1.81.0 || ConRender/libconrenderlib.a Network/libnetworklib.a
   FLAGS = -g
   LINK_FLAGS = -rdynamic
-  LINK_LIBRARIES = ConRender/libconrenderlib.a  /usr/lib/libboost_system.so.1.81.0  -lncurses
+  LINK_LIBRARIES = ConRender/libconrenderlib.a  Network/libnetworklib.a  -lncurses  /usr/lib/libboost_system.so.1.81.0
   OBJECT_DIR = CMakeFiles/congame.dir
   POST_BUILD = :
   PRE_LINK = :
@@ -243,11 +243,118 @@ build ConRender/CMakeFiles/install/strip.util: CUSTOM_COMMAND ConRender/all
 build ConRender/install/strip: phony ConRender/CMakeFiles/install/strip.util
 
 # =============================================================================
+# Write statements declared in CMakeLists.txt:
+# /home/alexey/projects/conGame/CMakeLists.txt
+# =============================================================================
+
+# =============================================================================
+# Object build statements for STATIC_LIBRARY target networklib
+
+
+#############################################
+# Order-only phony target for networklib
+
+build cmake_object_order_depends_target_networklib: phony || Network/CMakeFiles/networklib.dir
+
+build Network/CMakeFiles/networklib.dir/network.cpp.o: CXX_COMPILER__networklib_Debug /home/alexey/projects/conGame/Network/network.cpp || cmake_object_order_depends_target_networklib
+  DEFINES = -DBOOST_SYSTEM_DYN_LINK -DBOOST_SYSTEM_NO_LIB
+  DEP_FILE = Network/CMakeFiles/networklib.dir/network.cpp.o.d
+  FLAGS = -g
+  OBJECT_DIR = Network/CMakeFiles/networklib.dir
+  OBJECT_FILE_DIR = Network/CMakeFiles/networklib.dir
+
+
+# =============================================================================
+# Link build statements for STATIC_LIBRARY target networklib
+
+
+#############################################
+# Link the static library Network/libnetworklib.a
+
+build Network/libnetworklib.a: CXX_STATIC_LIBRARY_LINKER__networklib_Debug Network/CMakeFiles/networklib.dir/network.cpp.o || /usr/lib/libboost_system.so.1.81.0
+  LANGUAGE_COMPILE_FLAGS = -g
+  OBJECT_DIR = Network/CMakeFiles/networklib.dir
+  POST_BUILD = :
+  PRE_LINK = :
+  TARGET_FILE = Network/libnetworklib.a
+  TARGET_PDB = networklib.a.dbg
+
+
+#############################################
+# Utility command for edit_cache
+
+build Network/CMakeFiles/edit_cache.util: CUSTOM_COMMAND
+  COMMAND = cd /home/alexey/projects/conGame/build/Network && /usr/bin/ccmake -S/home/alexey/projects/conGame -B/home/alexey/projects/conGame/build
+  DESC = Running CMake cache editor...
+  pool = console
+  restat = 1
+
+build Network/edit_cache: phony Network/CMakeFiles/edit_cache.util
+
+
+#############################################
+# Utility command for rebuild_cache
+
+build Network/CMakeFiles/rebuild_cache.util: CUSTOM_COMMAND
+  COMMAND = cd /home/alexey/projects/conGame/build/Network && /usr/bin/cmake --regenerate-during-build -S/home/alexey/projects/conGame -B/home/alexey/projects/conGame/build
+  DESC = Running CMake to regenerate build system...
+  pool = console
+  restat = 1
+
+build Network/rebuild_cache: phony Network/CMakeFiles/rebuild_cache.util
+
+
+#############################################
+# Utility command for list_install_components
+
+build Network/list_install_components: phony
+
+
+#############################################
+# Utility command for install
+
+build Network/CMakeFiles/install.util: CUSTOM_COMMAND Network/all
+  COMMAND = cd /home/alexey/projects/conGame/build/Network && /usr/bin/cmake -P cmake_install.cmake
+  DESC = Install the project...
+  pool = console
+  restat = 1
+
+build Network/install: phony Network/CMakeFiles/install.util
+
+
+#############################################
+# Utility command for install/local
+
+build Network/CMakeFiles/install/local.util: CUSTOM_COMMAND Network/all
+  COMMAND = cd /home/alexey/projects/conGame/build/Network && /usr/bin/cmake -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake
+  DESC = Installing only the local directory...
+  pool = console
+  restat = 1
+
+build Network/install/local: phony Network/CMakeFiles/install/local.util
+
+
+#############################################
+# Utility command for install/strip
+
+build Network/CMakeFiles/install/strip.util: CUSTOM_COMMAND Network/all
+  COMMAND = cd /home/alexey/projects/conGame/build/Network && /usr/bin/cmake -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake
+  DESC = Installing the project stripped...
+  pool = console
+  restat = 1
+
+build Network/install/strip: phony Network/CMakeFiles/install/strip.util
+
+# =============================================================================
 # Target aliases.
 
 build conrenderlib: phony ConRender/libconrenderlib.a
 
 build libconrenderlib.a: phony ConRender/libconrenderlib.a
+
+build libnetworklib.a: phony Network/libnetworklib.a
+
+build networklib: phony Network/libnetworklib.a
 
 # =============================================================================
 # Folder targets.
@@ -257,7 +364,7 @@ build libconrenderlib.a: phony ConRender/libconrenderlib.a
 #############################################
 # Folder: /home/alexey/projects/conGame/build
 
-build all: phony congame ConRender/all
+build all: phony congame ConRender/all Network/all
 
 # =============================================================================
 
@@ -265,6 +372,13 @@ build all: phony congame ConRender/all
 # Folder: /home/alexey/projects/conGame/build/ConRender
 
 build ConRender/all: phony ConRender/libconrenderlib.a
+
+# =============================================================================
+
+#############################################
+# Folder: /home/alexey/projects/conGame/build/Network
+
+build Network/all: phony Network/libnetworklib.a
 
 # =============================================================================
 # Unknown Build Time Dependencies.
@@ -278,14 +392,14 @@ build ConRender/all: phony ConRender/libconrenderlib.a
 #############################################
 # Re-run CMake if any of its inputs changed.
 
-build build.ninja: RERUN_CMAKE | /home/alexey/projects/conGame/CMakeLists.txt /home/alexey/projects/conGame/ConRender/CMakeLists.txt /usr/lib/cmake/Boost-1.81.0/BoostConfig.cmake /usr/lib/cmake/Boost-1.81.0/BoostConfigVersion.cmake /usr/lib/cmake/BoostDetectToolset-1.81.0.cmake /usr/lib/cmake/boost_headers-1.81.0/boost_headers-config-version.cmake /usr/lib/cmake/boost_headers-1.81.0/boost_headers-config.cmake /usr/lib/cmake/boost_system-1.81.0/boost_system-config-version.cmake /usr/lib/cmake/boost_system-1.81.0/boost_system-config.cmake /usr/lib/cmake/boost_system-1.81.0/libboost_system-variant-shared.cmake /usr/lib/cmake/boost_system-1.81.0/libboost_system-variant-static.cmake /usr/share/cmake/Modules/CMakeCInformation.cmake /usr/share/cmake/Modules/CMakeCXXInformation.cmake /usr/share/cmake/Modules/CMakeCommonLanguageInclude.cmake /usr/share/cmake/Modules/CMakeGenericSystem.cmake /usr/share/cmake/Modules/CMakeInitializeConfigs.cmake /usr/share/cmake/Modules/CMakeLanguageInformation.cmake /usr/share/cmake/Modules/CMakeSystemSpecificInformation.cmake /usr/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake /usr/share/cmake/Modules/CheckLibraryExists.cmake /usr/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake /usr/share/cmake/Modules/Compiler/GNU-C.cmake /usr/share/cmake/Modules/Compiler/GNU-CXX.cmake /usr/share/cmake/Modules/Compiler/GNU.cmake /usr/share/cmake/Modules/FindBoost.cmake /usr/share/cmake/Modules/FindCurses.cmake /usr/share/cmake/Modules/FindPackageHandleStandardArgs.cmake /usr/share/cmake/Modules/FindPackageMessage.cmake /usr/share/cmake/Modules/FindPkgConfig.cmake /usr/share/cmake/Modules/Platform/Linux-GNU-C.cmake /usr/share/cmake/Modules/Platform/Linux-GNU-CXX.cmake /usr/share/cmake/Modules/Platform/Linux-GNU.cmake /usr/share/cmake/Modules/Platform/Linux.cmake /usr/share/cmake/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/3.25.1/CMakeCCompiler.cmake CMakeFiles/3.25.1/CMakeCXXCompiler.cmake CMakeFiles/3.25.1/CMakeSystem.cmake
+build build.ninja: RERUN_CMAKE | /home/alexey/projects/conGame/CMakeLists.txt /home/alexey/projects/conGame/ConRender/CMakeLists.txt /home/alexey/projects/conGame/Network/CMakeLists.txt /usr/lib/cmake/Boost-1.81.0/BoostConfig.cmake /usr/lib/cmake/Boost-1.81.0/BoostConfigVersion.cmake /usr/lib/cmake/BoostDetectToolset-1.81.0.cmake /usr/lib/cmake/boost_headers-1.81.0/boost_headers-config-version.cmake /usr/lib/cmake/boost_headers-1.81.0/boost_headers-config.cmake /usr/lib/cmake/boost_system-1.81.0/boost_system-config-version.cmake /usr/lib/cmake/boost_system-1.81.0/boost_system-config.cmake /usr/lib/cmake/boost_system-1.81.0/libboost_system-variant-shared.cmake /usr/lib/cmake/boost_system-1.81.0/libboost_system-variant-static.cmake /usr/share/cmake/Modules/CMakeCInformation.cmake /usr/share/cmake/Modules/CMakeCXXInformation.cmake /usr/share/cmake/Modules/CMakeCommonLanguageInclude.cmake /usr/share/cmake/Modules/CMakeGenericSystem.cmake /usr/share/cmake/Modules/CMakeInitializeConfigs.cmake /usr/share/cmake/Modules/CMakeLanguageInformation.cmake /usr/share/cmake/Modules/CMakeSystemSpecificInformation.cmake /usr/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake /usr/share/cmake/Modules/CheckLibraryExists.cmake /usr/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake /usr/share/cmake/Modules/Compiler/GNU-C.cmake /usr/share/cmake/Modules/Compiler/GNU-CXX.cmake /usr/share/cmake/Modules/Compiler/GNU.cmake /usr/share/cmake/Modules/FindBoost.cmake /usr/share/cmake/Modules/FindCurses.cmake /usr/share/cmake/Modules/FindPackageHandleStandardArgs.cmake /usr/share/cmake/Modules/FindPackageMessage.cmake /usr/share/cmake/Modules/FindPkgConfig.cmake /usr/share/cmake/Modules/Platform/Linux-GNU-C.cmake /usr/share/cmake/Modules/Platform/Linux-GNU-CXX.cmake /usr/share/cmake/Modules/Platform/Linux-GNU.cmake /usr/share/cmake/Modules/Platform/Linux.cmake /usr/share/cmake/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/3.25.1/CMakeCCompiler.cmake CMakeFiles/3.25.1/CMakeCXXCompiler.cmake CMakeFiles/3.25.1/CMakeSystem.cmake
   pool = console
 
 
 #############################################
 # A missing CMake input file is not an error.
 
-build /home/alexey/projects/conGame/CMakeLists.txt /home/alexey/projects/conGame/ConRender/CMakeLists.txt /usr/lib/cmake/Boost-1.81.0/BoostConfig.cmake /usr/lib/cmake/Boost-1.81.0/BoostConfigVersion.cmake /usr/lib/cmake/BoostDetectToolset-1.81.0.cmake /usr/lib/cmake/boost_headers-1.81.0/boost_headers-config-version.cmake /usr/lib/cmake/boost_headers-1.81.0/boost_headers-config.cmake /usr/lib/cmake/boost_system-1.81.0/boost_system-config-version.cmake /usr/lib/cmake/boost_system-1.81.0/boost_system-config.cmake /usr/lib/cmake/boost_system-1.81.0/libboost_system-variant-shared.cmake /usr/lib/cmake/boost_system-1.81.0/libboost_system-variant-static.cmake /usr/share/cmake/Modules/CMakeCInformation.cmake /usr/share/cmake/Modules/CMakeCXXInformation.cmake /usr/share/cmake/Modules/CMakeCommonLanguageInclude.cmake /usr/share/cmake/Modules/CMakeGenericSystem.cmake /usr/share/cmake/Modules/CMakeInitializeConfigs.cmake /usr/share/cmake/Modules/CMakeLanguageInformation.cmake /usr/share/cmake/Modules/CMakeSystemSpecificInformation.cmake /usr/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake /usr/share/cmake/Modules/CheckLibraryExists.cmake /usr/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake /usr/share/cmake/Modules/Compiler/GNU-C.cmake /usr/share/cmake/Modules/Compiler/GNU-CXX.cmake /usr/share/cmake/Modules/Compiler/GNU.cmake /usr/share/cmake/Modules/FindBoost.cmake /usr/share/cmake/Modules/FindCurses.cmake /usr/share/cmake/Modules/FindPackageHandleStandardArgs.cmake /usr/share/cmake/Modules/FindPackageMessage.cmake /usr/share/cmake/Modules/FindPkgConfig.cmake /usr/share/cmake/Modules/Platform/Linux-GNU-C.cmake /usr/share/cmake/Modules/Platform/Linux-GNU-CXX.cmake /usr/share/cmake/Modules/Platform/Linux-GNU.cmake /usr/share/cmake/Modules/Platform/Linux.cmake /usr/share/cmake/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/3.25.1/CMakeCCompiler.cmake CMakeFiles/3.25.1/CMakeCXXCompiler.cmake CMakeFiles/3.25.1/CMakeSystem.cmake: phony
+build /home/alexey/projects/conGame/CMakeLists.txt /home/alexey/projects/conGame/ConRender/CMakeLists.txt /home/alexey/projects/conGame/Network/CMakeLists.txt /usr/lib/cmake/Boost-1.81.0/BoostConfig.cmake /usr/lib/cmake/Boost-1.81.0/BoostConfigVersion.cmake /usr/lib/cmake/BoostDetectToolset-1.81.0.cmake /usr/lib/cmake/boost_headers-1.81.0/boost_headers-config-version.cmake /usr/lib/cmake/boost_headers-1.81.0/boost_headers-config.cmake /usr/lib/cmake/boost_system-1.81.0/boost_system-config-version.cmake /usr/lib/cmake/boost_system-1.81.0/boost_system-config.cmake /usr/lib/cmake/boost_system-1.81.0/libboost_system-variant-shared.cmake /usr/lib/cmake/boost_system-1.81.0/libboost_system-variant-static.cmake /usr/share/cmake/Modules/CMakeCInformation.cmake /usr/share/cmake/Modules/CMakeCXXInformation.cmake /usr/share/cmake/Modules/CMakeCommonLanguageInclude.cmake /usr/share/cmake/Modules/CMakeGenericSystem.cmake /usr/share/cmake/Modules/CMakeInitializeConfigs.cmake /usr/share/cmake/Modules/CMakeLanguageInformation.cmake /usr/share/cmake/Modules/CMakeSystemSpecificInformation.cmake /usr/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake /usr/share/cmake/Modules/CheckLibraryExists.cmake /usr/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake /usr/share/cmake/Modules/Compiler/GNU-C.cmake /usr/share/cmake/Modules/Compiler/GNU-CXX.cmake /usr/share/cmake/Modules/Compiler/GNU.cmake /usr/share/cmake/Modules/FindBoost.cmake /usr/share/cmake/Modules/FindCurses.cmake /usr/share/cmake/Modules/FindPackageHandleStandardArgs.cmake /usr/share/cmake/Modules/FindPackageMessage.cmake /usr/share/cmake/Modules/FindPkgConfig.cmake /usr/share/cmake/Modules/Platform/Linux-GNU-C.cmake /usr/share/cmake/Modules/Platform/Linux-GNU-CXX.cmake /usr/share/cmake/Modules/Platform/Linux-GNU.cmake /usr/share/cmake/Modules/Platform/Linux.cmake /usr/share/cmake/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/3.25.1/CMakeCCompiler.cmake CMakeFiles/3.25.1/CMakeCXXCompiler.cmake CMakeFiles/3.25.1/CMakeSystem.cmake: phony
 
 
 #############################################

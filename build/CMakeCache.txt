@@ -262,6 +262,18 @@ conrenderlib_LIB_DEPENDS:STATIC=general;ncurses;
 //Value Computed by CMake
 conrenderlib_SOURCE_DIR:STATIC=/home/alexey/projects/conGame/ConRender
 
+//Value Computed by CMake
+networklib_BINARY_DIR:STATIC=/home/alexey/projects/conGame/build/Network
+
+//Value Computed by CMake
+networklib_IS_TOP_LEVEL:STATIC=OFF
+
+//Dependencies for the target
+networklib_LIB_DEPENDS:STATIC=general;Boost::system;
+
+//Value Computed by CMake
+networklib_SOURCE_DIR:STATIC=/home/alexey/projects/conGame/Network
+
 //Path to a library.
 pkgcfg_lib_NCURSES_ncursesw:FILEPATH=/usr/lib/libncursesw.so
 
@@ -370,7 +382,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_NM
 CMAKE_NM-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=2
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=3
 //ADVANCED property for variable: CMAKE_OBJCOPY
 CMAKE_OBJCOPY-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_OBJDUMP

@@ -12,3 +12,10 @@
 /home/alexey/projects/conGame/build/ConRender/CMakeFiles/install.dir
 /home/alexey/projects/conGame/build/ConRender/CMakeFiles/install/local.dir
 /home/alexey/projects/conGame/build/ConRender/CMakeFiles/install/strip.dir
+/home/alexey/projects/conGame/build/Network/CMakeFiles/networklib.dir
+/home/alexey/projects/conGame/build/Network/CMakeFiles/edit_cache.dir
+/home/alexey/projects/conGame/build/Network/CMakeFiles/rebuild_cache.dir
+/home/alexey/projects/conGame/build/Network/CMakeFiles/list_install_components.dir
+/home/alexey/projects/conGame/build/Network/CMakeFiles/install.dir
+/home/alexey/projects/conGame/build/Network/CMakeFiles/install/local.dir
+/home/alexey/projects/conGame/build/Network/CMakeFiles/install/strip.dir

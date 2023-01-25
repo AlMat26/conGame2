@@ -17,7 +17,8 @@
 		"files" : 
 		[
 			"CMakeLists.txt",
-			"ConRender/CMakeLists.txt"
+			"ConRender/CMakeLists.txt",
+			"Network/CMakeLists.txt"
 		],
 		"nodes" : 
 		[
@@ -27,19 +28,19 @@
 			{
 				"command" : 0,
 				"file" : 0,
-				"line" : 15,
+				"line" : 5,
 				"parent" : 0
 			},
 			{
 				"command" : 1,
 				"file" : 0,
-				"line" : 21,
+				"line" : 12,
 				"parent" : 0
 			},
 			{
 				"command" : 2,
 				"file" : 0,
-				"line" : 19,
+				"line" : 10,
 				"parent" : 0
 			},
 			{
@@ -48,8 +49,17 @@
 			{
 				"command" : 2,
 				"file" : 1,
-				"line" : 21,
+				"line" : 20,
 				"parent" : 4
+			},
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 20,
+				"parent" : 6
 			}
 		]
 	},
@@ -85,6 +95,10 @@
 		{
 			"backtrace" : 3,
 			"id" : "conrenderlib::@7189a70f20f44bb29909"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "networklib::@2ce5434ecf0d5818020e"
 		}
 	],
 	"id" : "congame::@6890427a1f51a3e7e1df",
@@ -121,12 +135,17 @@
 			},
 			{
 				"backtrace" : 3,
-				"fragment" : "/usr/lib/libboost_system.so.1.81.0",
+				"fragment" : "Network/libnetworklib.a",
 				"role" : "libraries"
 			},
 			{
 				"backtrace" : 5,
 				"fragment" : "-lncurses",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 7,
+				"fragment" : "/usr/lib/libboost_system.so.1.81.0",
 				"role" : "libraries"
 			}
 		],
