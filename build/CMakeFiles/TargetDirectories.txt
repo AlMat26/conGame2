@@ -1,0 +1,14 @@
+/home/alexey/projects/conGame/build/CMakeFiles/congame.dir
+/home/alexey/projects/conGame/build/CMakeFiles/edit_cache.dir
+/home/alexey/projects/conGame/build/CMakeFiles/rebuild_cache.dir
+/home/alexey/projects/conGame/build/CMakeFiles/list_install_components.dir
+/home/alexey/projects/conGame/build/CMakeFiles/install.dir
+/home/alexey/projects/conGame/build/CMakeFiles/install/local.dir
+/home/alexey/projects/conGame/build/CMakeFiles/install/strip.dir
+/home/alexey/projects/conGame/build/ConRender/CMakeFiles/conrenderlib.dir
+/home/alexey/projects/conGame/build/ConRender/CMakeFiles/edit_cache.dir
+/home/alexey/projects/conGame/build/ConRender/CMakeFiles/rebuild_cache.dir
+/home/alexey/projects/conGame/build/ConRender/CMakeFiles/list_install_components.dir
+/home/alexey/projects/conGame/build/ConRender/CMakeFiles/install.dir
+/home/alexey/projects/conGame/build/ConRender/CMakeFiles/install/local.dir
+/home/alexey/projects/conGame/build/ConRender/CMakeFiles/install/strip.dir
