@@ -67,7 +67,7 @@ build CMakeFiles/congame.dir/main.cpp.o: CXX_COMPILER__congame_Debug /home/alexe
 build congame: CXX_EXECUTABLE_LINKER__congame_Debug CMakeFiles/congame.dir/main.cpp.o | ConRender/libconrenderlib.a /usr/lib/libboost_system.so.1.81.0 || ConRender/libconrenderlib.a
   FLAGS = -g
   LINK_FLAGS = -rdynamic
-  LINK_LIBRARIES = ConRender/libconrenderlib.a  /usr/lib/libboost_system.so.1.81.0
+  LINK_LIBRARIES = ConRender/libconrenderlib.a  /usr/lib/libboost_system.so.1.81.0  -lncurses
   OBJECT_DIR = CMakeFiles/congame.dir
   POST_BUILD = :
   PRE_LINK = :

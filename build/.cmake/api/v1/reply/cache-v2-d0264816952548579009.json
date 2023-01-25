@@ -1834,6 +1834,18 @@
 			"value" : "OFF"
 		},
 		{
+			"name" : "conrenderlib_LIB_DEPENDS",
+			"properties" : 
+			[
+				{
+					"name" : "HELPSTRING",
+					"value" : "Dependencies for the target"
+				}
+			],
+			"type" : "STATIC",
+			"value" : "general;ncurses;"
+		},
+		{
 			"name" : "conrenderlib_SOURCE_DIR",
 			"properties" : 
 			[

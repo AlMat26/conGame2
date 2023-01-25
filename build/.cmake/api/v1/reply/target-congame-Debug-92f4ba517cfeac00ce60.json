@@ -16,7 +16,8 @@
 		],
 		"files" : 
 		[
-			"CMakeLists.txt"
+			"CMakeLists.txt",
+			"ConRender/CMakeLists.txt"
 		],
 		"nodes" : 
 		[
@@ -26,20 +27,29 @@
 			{
 				"command" : 0,
 				"file" : 0,
-				"line" : 23,
+				"line" : 15,
 				"parent" : 0
 			},
 			{
 				"command" : 1,
 				"file" : 0,
-				"line" : 29,
+				"line" : 21,
 				"parent" : 0
 			},
 			{
 				"command" : 2,
 				"file" : 0,
-				"line" : 27,
+				"line" : 19,
 				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 20,
+				"parent" : 4
 			}
 		]
 	},
@@ -112,6 +122,11 @@
 			{
 				"backtrace" : 3,
 				"fragment" : "/usr/lib/libboost_system.so.1.81.0",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 5,
+				"fragment" : "-lncurses",
 				"role" : "libraries"
 			}
 		],

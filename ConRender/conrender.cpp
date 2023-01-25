@@ -21,13 +21,13 @@ void ConRender::printxy ( std::string str, int x, int y )
               str.c_str() );
 }
 
-void ConRender::clear()
+void ConRender::clearScr()
 {
     clear();
     getmaxyx ( stdscr, windowHeight, windowWidth );
 }
 
-void ConRender::refresh()
+void ConRender::refreshScr()
 {
     refresh ();
 }
@@ -35,6 +35,12 @@ void ConRender::refresh()
 char ConRender::getInput()
 {
     return getchar();
+}
+
+void ConRender::setViewPosexy ( int x, int y )
+{
+    m_PoseX = x;
+    m_PoseY = y;
 }
 
 ConRender::~ConRender()

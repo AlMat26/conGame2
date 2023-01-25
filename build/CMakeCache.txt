@@ -256,6 +256,9 @@ conrenderlib_BINARY_DIR:STATIC=/home/alexey/projects/conGame/build/ConRender
 //Value Computed by CMake
 conrenderlib_IS_TOP_LEVEL:STATIC=OFF
 
+//Dependencies for the target
+conrenderlib_LIB_DEPENDS:STATIC=general;ncurses;
+
 //Value Computed by CMake
 conrenderlib_SOURCE_DIR:STATIC=/home/alexey/projects/conGame/ConRender
 

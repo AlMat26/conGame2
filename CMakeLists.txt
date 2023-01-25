@@ -11,14 +11,6 @@ else()
     include_directories(${Boost_INCLUDE_DIRS})
 endif()
 ##############################
-#find_package(Curses REQUIRED)
-#if(NOT Curses_FOUND)
-#    message(SEND_ERROR "Failed to find Curses")
-#    return()
-#else()
-#    include_directories(${Curses_INCLUDE_DIRS})
-#endif()
-##############################
 
 add_executable(congame main.cpp)
 

@@ -10,8 +10,8 @@ class ConRender
 public:
     ConRender();
     void printxy(std::string str, int x, int y);
-    void clear();
-    void refresh();
+    void clearScr();
+    void refreshScr();
 
     char getInput();
 
@@ -22,8 +22,8 @@ private:
     int m_PoseX = 0;
     int m_PoseY = 0;
 
-    unsigned int windowWidth;
-    unsigned int windowHeight;
+    unsigned int windowWidth = 0;
+    unsigned int windowHeight = 0;
 };
 
 #endif // CONRENDER_H

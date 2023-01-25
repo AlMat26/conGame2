@@ -15,6 +15,6 @@ endif()
 set(SOURCE_LIB conrender.cpp)
 set(HEADER_LIB conrender.h)
 
-add_library(conrenderlib STATIC ${SOURCE_LIB} ${HEADER_LIB})
+add_library(conrenderlib STATIC ${SOURCE_LIB} ${HEADER_LIB} ${Curses_LIBRARIES})
 
-target_link_libraries(conrenderlib ${Curses_LIBRARIES})
+target_link_libraries(conrenderlib ncurses)
