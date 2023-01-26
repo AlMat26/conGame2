@@ -23,11 +23,11 @@ public:
     void connectTo(std::string ip);
     void acceptConnection ();
 
-    void recive(char* str);
+    /*void recive(char* str);
     void send (char* str);
 
     void recive(char* str, int id);
-    void send (char* str, int id);
+    void send (char* str, int id);*/
     ~Network ();
 private:
     bool is_server;
