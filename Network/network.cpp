@@ -23,6 +23,12 @@ void Network::acceptConnection()
     server.acceptor -> accept(server.clientSockets[server.clientSockets.size() - 1]);
 }
 
+void Network::recive(char *str)
+{
+    int sizeOfStream;
+    client.sock->read_some(buffer(sizeOfStream, sizeof(int)));
+}
+
 Network::~Network()
 {
     if(is_server)
