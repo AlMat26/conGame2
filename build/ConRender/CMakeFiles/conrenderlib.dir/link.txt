@@ -1,0 +1,2 @@
+/usr/bin/ar qc libconrenderlib.a CMakeFiles/conrenderlib.dir/conrender.cpp.o
+/usr/bin/ranlib libconrenderlib.a

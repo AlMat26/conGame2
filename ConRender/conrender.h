@@ -1,6 +1,8 @@
 #ifndef CONRENDER_H
 #define CONRENDER_H
 
+#define NCURSES_NOMACROS
+
 #include <ncurses.h>
 #include <string>
 
