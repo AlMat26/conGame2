@@ -1,6 +1,8 @@
 #include "game.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <sstream>
 #include <thread>
@@ -15,6 +17,16 @@ const int damageResetMs = 3000;
 const int saplingTimeMs = 60000;
 const int treeGrowTimeMs = 90000;
 const int growRetryMs = 5000;
+const int noteTimeMs = 2500;
+
+const int woodFromTree = 2;
+const int woodFromSupport = 1;
+const int woodPerTunnel = 1;
+
+// Уровни света: 0 — темно, 1 — край света (только символ плотности),
+// 2 — полутень, 3 и больше — светло
+const int fullLight = 3;
+const int playerLightPower = 8;
 
 static long nowMs()
 {
@@ -35,6 +47,10 @@ static int getDurability(Tile tile)
         return 4;
     case Tile::Bridge:
         return 2;
+    case Tile::Support:
+        return 2;
+    case Tile::Ore:
+        return 6;
     default:
         return 1;
     }
@@ -60,8 +76,13 @@ Game::Game(ConRender* renderer)
     setLook(Tile::Wall, "#", COLOR_YELLOW, false);
     setLook(Tile::Bridge, "=", COLOR_YELLOW, false);
     setLook(Tile::Sapling, "\"", COLOR_GREEN, false);
+    setLook(Tile::Support, "+", COLOR_YELLOW, false);
+    setLook(Tile::Ore, "*", COLOR_MAGENTA, true);
+    setLook(Tile::LadderDown, ">", COLOR_YELLOW, true);
+    setLook(Tile::LadderUp, "<", COLOR_YELLOW, true);
 
     foamColor = renderer -> addColor(COLOR_WHITE, COLOR_BLACK, true);
+    shadowColor = renderer -> addColor(COLOR_BLUE, COLOR_BLACK);
     damagedColor = renderer -> addColor(COLOR_RED, COLOR_BLACK, true);
     damagedHighlight = renderer -> addColor(COLOR_BLACK, COLOR_RED);
 
@@ -207,11 +228,12 @@ bool Game::spawnPlayer(int id)
         {
             for (int dx = -radius; dx <= radius; dx++)
             {
-                if(isFree(spawnX + dx, spawnY + dy))
+                if(isFree(spawnX + dx, spawnY + dy, 0))
                 {
                     players[id].active = true;
                     players[id].x = spawnX + dx;
                     players[id].y = spawnY + dy;
+                    players[id].z = 0;
                     return true;
                 }
             }
@@ -220,11 +242,11 @@ bool Game::spawnPlayer(int id)
     return false;
 }
 
-bool Game::isPlayerAt(int x, int y)
+bool Game::isPlayerAt(int x, int y, int z)
 {
     for (int i = 0; i < maxPlayers; i++)
     {
-        if(players[i].active && players[i].x == x && players[i].y == y)
+        if(players[i].active && players[i].x == x && players[i].y == y && players[i].z == z)
         {
             return true;
         }
@@ -232,23 +254,41 @@ bool Game::isPlayerAt(int x, int y)
     return false;
 }
 
-bool Game::isFree(int x, int y)
+bool Game::isFree(int x, int y, int z)
 {
-    return world -> isWalkable(x, y) && !isPlayerAt(x, y);
+    return world -> isWalkable(x, y, z) && !isPlayerAt(x, y, z);
 }
 
 bool Game::tryMove(int id, int dx, int dy)
 {
     Player& player = players[id];
     long now = nowMs();
+    int x = player.x + dx;
+    int y = player.y + dy;
+    int z = player.z;
 
-    if(now - player.lastMoveMs < moveCooldownMs || !isFree(player.x + dx, player.y + dy))
+    if(now - player.lastMoveMs < moveCooldownMs || !isFree(x, y, z))
     {
         return false;
     }
 
-    player.x += dx;
-    player.y += dy;
+    // Шагнул на лестницу — оказывается на парной лестнице соседнего уровня
+    Tile tile = world -> getTile(x, y, z);
+    if(tile == Tile::LadderDown)
+    {
+        z--;
+    } else if (tile == Tile::LadderUp)
+    {
+        z++;
+    }
+    if(z != player.z && isPlayerAt(x, y, z))
+    {
+        return false;
+    }
+
+    player.x = x;
+    player.y = y;
+    player.z = z;
     player.lastMoveMs = now;
     return true;
 }
@@ -259,23 +299,24 @@ bool Game::tryDig(int id, int dx, int dy)
     long now = nowMs();
     int x = player.x + dx;
     int y = player.y + dy;
+    int z = player.z;
 
     if(now - player.lastActionMs < actionCooldownMs)
     {
         return false;
     }
 
-    Tile tile = world -> getTile(x, y);
+    Tile tile = world -> getTile(x, y, z);
     Tile result = tile;
     if(tile == Tile::Tree || tile == Tile::Sapling)
     {
         result = Tile::Grass;
-    } else if (tile == Tile::Rock)
+    } else if (tile == Tile::Rock || tile == Tile::Ore || tile == Tile::Support)
     {
         result = Tile::RockFloor;
-    } else if (tile == Tile::Wall || (tile == Tile::Bridge && !isPlayerAt(x, y)))
+    } else if (tile == Tile::Wall || (tile == Tile::Bridge && !isPlayerAt(x, y, z)))
     {
-        result = world -> getGroundTile(x, y);
+        result = world -> getGroundTile(x, y, z);
     } else
     {
         return false;
@@ -283,7 +324,15 @@ bool Game::tryDig(int id, int dx, int dy)
 
     player.lastActionMs = now;
 
-    int key = cellKey(x, y);
+    // Новый проход под землёй сразу укрепляется — на крепь уходит дерево
+    bool needsSupport = z < 0 && (tile == Tile::Rock || tile == Tile::Ore);
+    if(needsSupport && player.wood < woodPerTunnel)
+    {
+        notify(id, "Need wood for supports");
+        return false;
+    }
+
+    int key = cellKey(x, y, z);
     Damage& damage = damages[key];
     damage.hits++;
     damage.lastHitMs = now;
@@ -298,12 +347,32 @@ bool Game::tryDig(int id, int dx, int dy)
     if(tile == Tile::Tree)
     {
         growthTimes[key] = now + saplingTimeMs;
+        player.wood += woodFromTree;
     } else
     {
         growthTimes.erase(key);
     }
 
-    changeTile(x, y, result);
+    if(tile == Tile::Support)
+    {
+        player.wood += woodFromSupport;
+    } else if (tile == Tile::Ore)
+    {
+        player.ore++;
+    }
+
+    changeTile(x, y, z, result);
+
+    if(needsSupport)
+    {
+        player.wood -= woodPerTunnel;
+        placeSupports(x, y, z, dx, dy);
+    }
+
+    if(tile == Tile::Tree || tile == Tile::Support || tile == Tile::Ore || needsSupport)
+    {
+        sendInventory(id);
+    }
     return true;
 }
 
@@ -313,19 +382,20 @@ bool Game::tryBuild(int id, int dx, int dy)
     long now = nowMs();
     int x = player.x + dx;
     int y = player.y + dy;
+    int z = player.z;
 
-    if(now - player.lastActionMs < actionCooldownMs || !world -> isInside(x, y) || isPlayerAt(x, y))
+    if(now - player.lastActionMs < actionCooldownMs || !world -> isInside(x, y, z) || isPlayerAt(x, y, z))
     {
         return false;
     }
 
-    Tile tile = world -> getTile(x, y);
+    Tile tile = world -> getTile(x, y, z);
     if(isWater(tile))
     {
-        changeTile(x, y, Tile::Bridge);
+        changeTile(x, y, z, Tile::Bridge);
     } else if (tile == Tile::Grass || tile == Tile::Sand || tile == Tile::RockFloor || tile == Tile::Sapling)
     {
-        changeTile(x, y, Tile::Wall);
+        changeTile(x, y, z, Tile::Wall);
     } else
     {
         return false;
@@ -335,14 +405,29 @@ bool Game::tryBuild(int id, int dx, int dy)
     return true;
 }
 
-// Хост запоминает все изменения мира, чтобы отдать их тем, кто подключится позже
-void Game::changeTile(int x, int y, Tile tile)
+// Крепь встаёт по бокам прохода — там, где осталась сплошная порода
+void Game::placeSupports(int x, int y, int z, int dx, int dy)
 {
-    world -> setTile(x, y, tile);
-    changedTiles[cellKey(x, y)] = tile;
-    damages.erase(cellKey(x, y));
+    int sideX[2] = { x + dy, x - dy };
+    int sideY[2] = { y + dx, y - dx };
 
-    broadcast(tileMessage(x, y, tile));
+    for (int i = 0; i < 2; i++)
+    {
+        if(world -> getTile(sideX[i], sideY[i], z) == Tile::Rock && world -> isInside(sideX[i], sideY[i], z))
+        {
+            changeTile(sideX[i], sideY[i], z, Tile::Support);
+        }
+    }
+}
+
+// Хост запоминает все изменения мира, чтобы отдать их тем, кто подключится позже
+void Game::changeTile(int x, int y, int z, Tile tile)
+{
+    world -> setTile(x, y, z, tile);
+    changedTiles[cellKey(x, y, z)] = tile;
+    damages.erase(cellKey(x, y, z));
+
+    broadcast(tileMessage(x, y, z, tile));
 }
 
 // Мир живёт только у хоста (и в одиночной игре): сброс повреждений и рост деревьев
@@ -366,9 +451,11 @@ void Game::updateWorld()
     std::map <int, long>::iterator growth = growthTimes.begin();
     while(growth != growthTimes.end())
     {
-        int x = growth -> first % world -> getWidth();
-        int y = growth -> first / world -> getWidth();
-        Tile tile = world -> getTile(x, y);
+        int x = 0;
+        int y = 0;
+        int z = 0;
+        keyToCell(growth -> first, x, y, z);
+        Tile tile = world -> getTile(x, y, z);
 
         if(now < growth -> second)
         {
@@ -376,26 +463,55 @@ void Game::updateWorld()
         } else if (tile != Tile::Grass && tile != Tile::Sapling)
         {
             growth = growthTimes.erase(growth);
-        } else if (isPlayerAt(x, y))
+        } else if (isPlayerAt(x, y, z))
         {
             growth -> second = now + growRetryMs;
             growth++;
         } else if (tile == Tile::Grass)
         {
-            changeTile(x, y, Tile::Sapling);
+            changeTile(x, y, z, Tile::Sapling);
             growth -> second = now + treeGrowTimeMs;
             growth++;
         } else
         {
-            changeTile(x, y, Tile::Tree);
+            changeTile(x, y, z, Tile::Tree);
             growth = growthTimes.erase(growth);
         }
     }
 }
 
-int Game::cellKey(int x, int y)
+int Game::cellKey(int x, int y, int z)
 {
-    return y * world -> getWidth() + x;
+    return (-z * world -> getHeight() + y) * world -> getWidth() + x;
+}
+
+void Game::keyToCell(int key, int& x, int& y, int& z)
+{
+    x = key % world -> getWidth();
+    y = key / world -> getWidth() % world -> getHeight();
+    z = -(key / (world -> getWidth() * world -> getHeight()));
+}
+
+// Подсказка игроку внизу экрана (например, что не хватает дерева)
+void Game::notify(int id, std::string text)
+{
+    if(id == myId && client == nullptr)
+    {
+        note = text;
+        noteUntilMs = nowMs() + noteTimeMs;
+    } else if (server != nullptr)
+    {
+        server -> send("NOTE " + text, players[id].connectionId);
+    }
+}
+
+void Game::sendInventory(int id)
+{
+    if(server != nullptr && id != myId)
+    {
+        server -> send("INV " + std::to_string(players[id].wood) + " " + std::to_string(players[id].ore),
+                       players[id].connectionId);
+    }
 }
 
 void Game::handleInput(int key)
@@ -442,7 +558,7 @@ void Game::movePlayer(int dx, int dy)
         return;
     }
 
-    if(tryMove(myId, dx, dy) && server != nullptr)
+    if(tryMove(myId, dx, dy))
     {
         broadcast(positionMessage(myId));
     }
@@ -492,9 +608,11 @@ void Game::acceptPlayers()
 
             for (std::map <int, Tile>::iterator it = changedTiles.begin(); it != changedTiles.end(); it++)
             {
-                int x = it -> first % world -> getWidth();
-                int y = it -> first / world -> getWidth();
-                server -> send(tileMessage(x, y, it -> second), connectionId);
+                int x = 0;
+                int y = 0;
+                int z = 0;
+                keyToCell(it -> first, x, y, z);
+                server -> send(tileMessage(x, y, z, it -> second), connectionId);
             }
 
             for (int i = 0; i < maxPlayers; i++)
@@ -583,19 +701,24 @@ void Game::broadcast(const std::string& text)
 
 std::string Game::positionMessage(int id)
 {
-    return "POS " + std::to_string(id) + " " + std::to_string(players[id].x) + " " + std::to_string(players[id].y);
+    return "POS " + std::to_string(id) + " " + std::to_string(players[id].x) + " " + std::to_string(players[id].y)
+           + " " + std::to_string(players[id].z);
 }
 
-std::string Game::tileMessage(int x, int y, Tile tile)
+std::string Game::tileMessage(int x, int y, int z, Tile tile)
 {
-    return "TILE " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string((int)tile);
+    return "TILE " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z) + " "
+           + std::to_string((int)tile);
 }
 
 std::string Game::damageMessage(int key, int hits)
 {
-    int x = key % world -> getWidth();
-    int y = key / world -> getWidth();
-    return "DAMAGE " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(hits);
+    int x = 0;
+    int y = 0;
+    int z = 0;
+    keyToCell(key, x, y, z);
+    return "DAMAGE " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z) + " "
+           + std::to_string(hits);
 }
 
 void Game::receiveFromHost()
@@ -623,11 +746,12 @@ void Game::handleHostMessage(const std::string& text)
     {
         int x = 0;
         int y = 0;
+        int z = 0;
         int tile = -1;
-        if(in >> x >> y >> tile && tile >= 0 && tile < tileTypesCount && world -> isInside(x, y))
+        if(in >> x >> y >> z >> tile && tile >= 0 && tile < tileTypesCount && world -> isInside(x, y, z))
         {
-            world -> setTile(x, y, (Tile)tile);
-            damages.erase(cellKey(x, y));
+            world -> setTile(x, y, z, (Tile)tile);
+            damages.erase(cellKey(x, y, z));
         }
         return;
     }
@@ -636,17 +760,37 @@ void Game::handleHostMessage(const std::string& text)
     {
         int x = 0;
         int y = 0;
+        int z = 0;
         int hits = 0;
-        if(in >> x >> y >> hits && world -> isInside(x, y))
+        if(in >> x >> y >> z >> hits && world -> isInside(x, y, z))
         {
             if(hits > 0)
             {
-                damages[cellKey(x, y)].hits = hits;
+                damages[cellKey(x, y, z)].hits = hits;
             } else
             {
-                damages.erase(cellKey(x, y));
+                damages.erase(cellKey(x, y, z));
             }
         }
+        return;
+    }
+
+    if(type == "INV")
+    {
+        int wood = 0;
+        int ore = 0;
+        if(in >> wood >> ore)
+        {
+            players[myId].wood = wood;
+            players[myId].ore = ore;
+        }
+        return;
+    }
+
+    if(type == "NOTE")
+    {
+        std::getline(in >> std::ws, note);
+        noteUntilMs = nowMs() + noteTimeMs;
         return;
     }
 
@@ -660,16 +804,158 @@ void Game::handleHostMessage(const std::string& text)
     {
         int x = 0;
         int y = 0;
-        if(in >> x >> y)
+        int z = 0;
+        if(in >> x >> y >> z)
         {
             players[id].active = true;
             players[id].x = x;
             players[id].y = y;
+            players[id].z = z;
         }
     } else if (type == "LEAVE")
     {
         players[id] = Player();
     }
+}
+
+// Сейчас свет несут только игроки. Факелы добавятся сюда же — ещё одним видом источника
+void Game::collectLights(int z, std::vector <LightSource>& lights)
+{
+    for (int i = 0; i < maxPlayers; i++)
+    {
+        if(players[i].active && players[i].z == z)
+        {
+            LightSource light;
+            light.x = players[i].x;
+            light.y = players[i].y;
+            light.power = playerLightPower;
+            lights.push_back(light);
+        }
+    }
+}
+
+// Освещённость считается для прямоугольника экрана: от каждого источника
+// по прямой видимости, клетка получает самый яркий из доставших до неё
+void Game::computeLight(int z, int left, int bottom, int width, int height)
+{
+    lightLeft = left;
+    lightBottom = bottom;
+    lightWidth = width;
+    lightHeight = height;
+    lightMap.assign(width * height, 0);
+
+    std::vector <LightSource> lights;
+    collectLights(z, lights);
+
+    for (size_t i = 0; i < lights.size(); i++)
+    {
+        LightSource& light = lights[i];
+
+        for (int dy = -light.power; dy <= light.power; dy++)
+        {
+            for (int dx = -light.power; dx <= light.power; dx++)
+            {
+                int column = light.x + dx - left;
+                int row = light.y + dy - bottom;
+                if(column < 0 || row < 0 || column >= width || row >= height)
+                {
+                    continue;
+                }
+
+                // Клетка терминала примерно в полтора-два раза выше, чем шире,
+                // поэтому по вертикали свет «короче» — пятно выглядит круглее
+                int distance = (int)std::lround(std::sqrt(dx * dx + dy * dy * 2.25));
+                int level = light.power - distance;
+                int& cell = lightMap[row * width + column];
+
+                if(level > cell && isLineClear(light.x, light.y, light.x + dx, light.y + dy, z))
+                {
+                    cell = level;
+                }
+            }
+        }
+    }
+
+    // Прямая до дальней клетки стены упирается в соседние клетки той же стены,
+    // поэтому стена получает свет от освещённого пола рядом с ней
+    std::vector <int> floorLight = lightMap;
+    for (int row = 0; row < height; row++)
+    {
+        for (int column = 0; column < width; column++)
+        {
+            if(!world -> isOpaque(left + column, bottom + row, z))
+            {
+                continue;
+            }
+
+            int& cell = lightMap[row * width + column];
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    int nearColumn = column + dx;
+                    int nearRow = row + dy;
+                    if(nearColumn < 0 || nearRow < 0 || nearColumn >= width || nearRow >= height
+                       || world -> isOpaque(left + nearColumn, bottom + nearRow, z))
+                    {
+                        continue;
+                    }
+                    cell = std::max(cell, floorLight[nearRow * width + nearColumn]);
+                }
+            }
+        }
+    }
+}
+
+// Прямая Брезенхэма от источника до клетки: свет не проходит сквозь камень.
+// Сама клетка может быть непрозрачной — стену тоже видно
+bool Game::isLineClear(int fromX, int fromY, int toX, int toY, int z)
+{
+    int dx = std::abs(toX - fromX);
+    int dy = -std::abs(toY - fromY);
+    int stepX = fromX < toX ? 1 : -1;
+    int stepY = fromY < toY ? 1 : -1;
+    int error = dx + dy;
+    int x = fromX;
+    int y = fromY;
+
+    while(x != toX || y != toY)
+    {
+        int doubled = 2 * error;
+        if(doubled >= dy)
+        {
+            error += dy;
+            x += stepX;
+        }
+        if(doubled <= dx)
+        {
+            error += dx;
+            y += stepY;
+        }
+
+        if((x != toX || y != toY) && world -> isOpaque(x, y, z))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// На поверхности день — светло везде. Под землёй — по карте освещённости
+int Game::getLight(int x, int y, int z)
+{
+    if(z >= 0)
+    {
+        return fullLight;
+    }
+
+    int column = x - lightLeft;
+    int row = y - lightBottom;
+    if(column < 0 || row < 0 || column >= lightWidth || row >= lightHeight)
+    {
+        return 0;
+    }
+    return lightMap[row * lightWidth + column];
 }
 
 void Game::showStatus(std::string text)
@@ -691,24 +977,30 @@ void Game::draw()
     int halfWidth = renderer -> getWidth() / 2 + 1;
     int halfHeight = renderer -> getHeight() / 2 + 1;
 
+    if(me.z < 0)
+    {
+        computeLight(me.z, me.x - halfWidth, me.y - halfHeight, 2 * halfWidth + 1, 2 * halfHeight + 1);
+    }
+
     for (int y = me.y - halfHeight; y <= me.y + halfHeight; y++)
     {
         for (int x = me.x - halfWidth; x <= me.x + halfWidth; x++)
         {
-            drawTile(x, y, false);
+            drawTile(x, y, me.z, false);
         }
     }
 
     if(me.active)
     {
-        drawTile(me.x + facingX, me.y + facingY, true);
+        drawTile(me.x + facingX, me.y + facingY, me.z, true);
     }
 
     for (int i = 0; i < maxPlayers; i++)
     {
-        if(players[i].active && i != myId)
+        Player& other = players[i];
+        if(other.active && i != myId && other.z == me.z && getLight(other.x, other.y, other.z) > 0)
         {
-            renderer -> printxy("@", players[i].x, players[i].y, playerColors[i]);
+            renderer -> printxy("@", other.x, other.y, playerColors[i]);
         }
     }
     if(me.active)
@@ -722,13 +1014,19 @@ void Game::draw()
 
 bool Game::isCoast(int x, int y)
 {
-    return !isWater(world -> getTile(x + 1, y)) || !isWater(world -> getTile(x - 1, y))
-           || !isWater(world -> getTile(x, y + 1)) || !isWater(world -> getTile(x, y - 1));
+    return !isWater(world -> getTile(x + 1, y, 0)) || !isWater(world -> getTile(x - 1, y, 0))
+           || !isWater(world -> getTile(x, y + 1, 0)) || !isWater(world -> getTile(x, y - 1, 0));
 }
 
-void Game::drawTile(int x, int y, bool highlight)
+void Game::drawTile(int x, int y, int z, bool highlight)
 {
-    Tile tile = world -> getTile(x, y);
+    int light = getLight(x, y, z);
+    if(light <= 0)
+    {
+        return;
+    }
+
+    Tile tile = world -> getTile(x, y, z);
     TileLook& look = looks[(int)tile];
 
     unsigned int noise = ((unsigned int)x * 73856093u) ^ ((unsigned int)y * 19349663u);
@@ -756,9 +1054,19 @@ void Game::drawTile(int x, int y, bool highlight)
         }
     }
 
-    if(world -> isInside(x, y) && damages.count(cellKey(x, y)) > 0)
+    if(world -> isInside(x, y, z) && damages.count(cellKey(x, y, z)) > 0)
     {
         color = highlight ? damagedHighlight : damagedColor;
+    }
+
+    // Край света — только символ плотности, полутень — синим
+    if(light == 1)
+    {
+        glyph = world -> isOpaque(x, y, z) ? ":" : ".";
+        color = shadowColor;
+    } else if (light == 2 && !highlight)
+    {
+        color = shadowColor;
     }
 
     renderer -> printxy(glyph, x, y, color);
@@ -766,6 +1074,8 @@ void Game::drawTile(int x, int y, bool highlight)
 
 void Game::drawHud()
 {
+    Player& me = players[myId];
+
     int playersCount = 0;
     for (int i = 0; i < maxPlayers; i++)
     {
@@ -775,8 +1085,12 @@ void Game::drawHud()
         }
     }
 
-    std::string info = " x:" + std::to_string(players[myId].x) + " y:" + std::to_string(players[myId].y)
-                       + "  seed:" + std::to_string(world -> getSeed());
+    std::string info = " x:" + std::to_string(me.x) + " y:" + std::to_string(me.y);
+    if(me.z < 0)
+    {
+        info += " depth:" + std::to_string(-me.z);
+    }
+    info += "  seed:" + std::to_string(world -> getSeed());
     if(server != nullptr)
     {
         info += "  host " + hostAddress;
@@ -789,8 +1103,14 @@ void Game::drawHud()
     renderer -> printScr(info, 0, 0, hudColor);
     renderer -> printScr("@", info.size() + 1, 0, playerColors[myId]);
 
-    std::string help = " arrows/WASD - move, e - dig, r - build, q - quit ";
-    renderer -> printScr(help, 0, renderer -> getHeight() - 1, hudColor);
+    if(!note.empty() && nowMs() < noteUntilMs)
+    {
+        renderer -> printScr(" " + note + " ", 0, renderer -> getHeight() - 2, damagedHighlight);
+    }
+
+    std::string bottom = " wood:" + std::to_string(me.wood) + " ore:" + std::to_string(me.ore)
+                         + "  WASD - move, e - dig, r - build, q - quit ";
+    renderer -> printScr(bottom, 0, renderer -> getHeight() - 1, hudColor);
 }
 
 Game::~Game()
