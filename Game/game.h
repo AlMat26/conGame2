@@ -12,9 +12,15 @@ const int maxPlayers = 4;
 
 struct TileLook
 {
-    std::string glyph;
+    std::string glyphs;
     short color = 1;
     short highlight = 1;
+};
+
+struct Damage
+{
+    int hits = 0;
+    long lastHitMs = 0;
 };
 
 struct Player
@@ -43,7 +49,7 @@ public:
 
     ~Game();
 private:
-    void setLook(Tile tile, std::string glyph, short foreground);
+    void setLook(Tile tile, std::string glyphs, short foreground, bool bold);
     void createWorld(unsigned int seed);
     bool spawnPlayer(int id);
     bool isPlayerAt(int x, int y);
@@ -52,6 +58,8 @@ private:
     bool tryDig(int id, int dx, int dy);
     bool tryBuild(int id, int dx, int dy);
     void changeTile(int x, int y, Tile tile);
+    void updateWorld();
+    int cellKey(int x, int y);
 
     void handleInput(int key);
     void movePlayer(int dx, int dy);
@@ -64,12 +72,14 @@ private:
     void broadcast(const std::string& text);
     std::string positionMessage(int id);
     std::string tileMessage(int x, int y, Tile tile);
+    std::string damageMessage(int key, int hits);
 
     void receiveFromHost();
     void handleHostMessage(const std::string& text);
 
     void showStatus(std::string text);
     void draw();
+    bool isCoast(int x, int y);
     void drawTile(int x, int y, bool highlight);
     void drawHud();
 
@@ -89,10 +99,15 @@ private:
     std::string hostAddress;
 
     std::map <int, Tile> changedTiles;
+    std::map <int, Damage> damages;
+    std::map <int, long> growthTimes;
 
     TileLook looks[tileTypesCount];
     short playerColors[maxPlayers];
     short hudColor = 1;
+    short foamColor = 1;
+    short damagedColor = 1;
+    short damagedHighlight = 1;
 };
 
 #endif // GAME_H

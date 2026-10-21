@@ -59,7 +59,8 @@ void ConRender::printClipped ( std::string str, int row, int col, short color )
 
     if ( has_colors () )
     {
-        attrset ( COLOR_PAIR ( color ) );
+        attr_t bold = ( color < (short)boldColors.size() && boldColors[color] ) ? A_BOLD : A_NORMAL;
+        attrset ( COLOR_PAIR ( color ) | bold );
     }
     mvaddnstr ( row, col, str.c_str() + skip, length );
 }
@@ -75,7 +76,8 @@ void ConRender::refreshScr()
     refresh ();
 }
 
-short ConRender::addColor ( short foreground, short background )
+// bold в 8-цветных терминалах делает цвет ярким: жёлтый вместо коричневого и т.п.
+short ConRender::addColor ( short foreground, short background, bool bold )
 {
     if ( !has_colors () || colorsCount + 1 >= COLOR_PAIRS )
     {
@@ -84,6 +86,9 @@ short ConRender::addColor ( short foreground, short background )
 
     colorsCount++;
     init_pair ( colorsCount, foreground, background );
+
+    boldColors.resize ( colorsCount + 1, false );
+    boldColors[colorsCount] = bold;
     return colorsCount;
 }
 

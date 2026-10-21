@@ -11,6 +11,10 @@ const int waterFrameMs = 250;
 const int moveCooldownMs = 30;
 const int actionCooldownMs = 150;
 const int joinTimeoutMs = 5000;
+const int damageResetMs = 3000;
+const int saplingTimeMs = 60000;
+const int treeGrowTimeMs = 90000;
+const int growRetryMs = 5000;
 
 static long nowMs()
 {
@@ -18,19 +22,48 @@ static long nowMs()
                std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
+// Сколько ударов нужно, чтобы сломать клетку
+static int getDurability(Tile tile)
+{
+    switch(tile)
+    {
+    case Tile::Tree:
+        return 3;
+    case Tile::Rock:
+        return 5;
+    case Tile::Wall:
+        return 4;
+    case Tile::Bridge:
+        return 2;
+    default:
+        return 1;
+    }
+}
+
+static bool isWater(Tile tile)
+{
+    return tile == Tile::Water || tile == Tile::DeepWater;
+}
+
 Game::Game(ConRender* renderer)
 {
     this -> renderer = renderer;
 
-    setLook(Tile::DeepWater, "~", COLOR_BLUE);
-    setLook(Tile::Water, "~", COLOR_CYAN);
-    setLook(Tile::Sand, ",", COLOR_YELLOW);
-    setLook(Tile::Grass, ".", COLOR_GREEN);
-    setLook(Tile::Tree, "T", COLOR_GREEN);
-    setLook(Tile::Rock, "#", COLOR_WHITE);
-    setLook(Tile::RockFloor, ".", COLOR_WHITE);
-    setLook(Tile::Wall, "#", COLOR_YELLOW);
-    setLook(Tile::Bridge, "=", COLOR_YELLOW);
+    // Несколько символов в строке — варианты, выбираются по координатам клетки
+    setLook(Tile::DeepWater, "~", COLOR_BLUE, false);
+    setLook(Tile::Water, "~", COLOR_CYAN, false);
+    setLook(Tile::Sand, ",", COLOR_YELLOW, true);
+    setLook(Tile::Grass, "........'", COLOR_GREEN, false);
+    setLook(Tile::Tree, "TTT^", COLOR_GREEN, true);
+    setLook(Tile::Rock, "#", COLOR_WHITE, false);
+    setLook(Tile::RockFloor, ".", COLOR_WHITE, false);
+    setLook(Tile::Wall, "#", COLOR_YELLOW, false);
+    setLook(Tile::Bridge, "=", COLOR_YELLOW, false);
+    setLook(Tile::Sapling, "\"", COLOR_GREEN, false);
+
+    foamColor = renderer -> addColor(COLOR_WHITE, COLOR_BLACK, true);
+    damagedColor = renderer -> addColor(COLOR_RED, COLOR_BLACK, true);
+    damagedHighlight = renderer -> addColor(COLOR_BLACK, COLOR_RED);
 
     playerColors[0] = renderer -> addColor(COLOR_BLACK, COLOR_YELLOW);
     playerColors[1] = renderer -> addColor(COLOR_BLACK, COLOR_CYAN);
@@ -121,6 +154,10 @@ void Game::run()
             handleInput(key);
         }
 
+        if(client == nullptr)
+        {
+            updateWorld();
+        }
         if(server != nullptr)
         {
             acceptPlayers();
@@ -143,11 +180,11 @@ std::string Game::getMessage()
 }
 
 // Обычный вид — цветной символ на чёрном, подсветка (клетка перед игроком) — наоборот
-void Game::setLook(Tile tile, std::string glyph, short foreground)
+void Game::setLook(Tile tile, std::string glyphs, short foreground, bool bold)
 {
     TileLook& look = looks[(int)tile];
-    look.glyph = glyph;
-    look.color = renderer -> addColor(foreground, COLOR_BLACK);
+    look.glyphs = glyphs;
+    look.color = renderer -> addColor(foreground, COLOR_BLACK, bold);
     look.highlight = renderer -> addColor(COLOR_BLACK, foreground);
 }
 
@@ -229,21 +266,44 @@ bool Game::tryDig(int id, int dx, int dy)
     }
 
     Tile tile = world -> getTile(x, y);
-    if(tile == Tile::Tree)
+    Tile result = tile;
+    if(tile == Tile::Tree || tile == Tile::Sapling)
     {
-        changeTile(x, y, Tile::Grass);
+        result = Tile::Grass;
     } else if (tile == Tile::Rock)
     {
-        changeTile(x, y, Tile::RockFloor);
+        result = Tile::RockFloor;
     } else if (tile == Tile::Wall || (tile == Tile::Bridge && !isPlayerAt(x, y)))
     {
-        changeTile(x, y, world -> getGroundTile(x, y));
+        result = world -> getGroundTile(x, y);
     } else
     {
         return false;
     }
 
     player.lastActionMs = now;
+
+    int key = cellKey(x, y);
+    Damage& damage = damages[key];
+    damage.hits++;
+    damage.lastHitMs = now;
+
+    if(damage.hits < getDurability(tile))
+    {
+        broadcast(damageMessage(key, damage.hits));
+        return true;
+    }
+
+    // На месте срубленного дерева со временем вырастет новое, срубленный росток — конец
+    if(tile == Tile::Tree)
+    {
+        growthTimes[key] = now + saplingTimeMs;
+    } else
+    {
+        growthTimes.erase(key);
+    }
+
+    changeTile(x, y, result);
     return true;
 }
 
@@ -260,10 +320,10 @@ bool Game::tryBuild(int id, int dx, int dy)
     }
 
     Tile tile = world -> getTile(x, y);
-    if(tile == Tile::Water || tile == Tile::DeepWater)
+    if(isWater(tile))
     {
         changeTile(x, y, Tile::Bridge);
-    } else if (tile == Tile::Grass || tile == Tile::Sand || tile == Tile::RockFloor)
+    } else if (tile == Tile::Grass || tile == Tile::Sand || tile == Tile::RockFloor || tile == Tile::Sapling)
     {
         changeTile(x, y, Tile::Wall);
     } else
@@ -279,12 +339,63 @@ bool Game::tryBuild(int id, int dx, int dy)
 void Game::changeTile(int x, int y, Tile tile)
 {
     world -> setTile(x, y, tile);
-    changedTiles[y * world -> getWidth() + x] = tile;
+    changedTiles[cellKey(x, y)] = tile;
+    damages.erase(cellKey(x, y));
 
-    if(server != nullptr)
+    broadcast(tileMessage(x, y, tile));
+}
+
+// Мир живёт только у хоста (и в одиночной игре): сброс повреждений и рост деревьев
+void Game::updateWorld()
+{
+    long now = nowMs();
+
+    std::map <int, Damage>::iterator damage = damages.begin();
+    while(damage != damages.end())
     {
-        broadcast(tileMessage(x, y, tile));
+        if(now - damage -> second.lastHitMs > damageResetMs)
+        {
+            broadcast(damageMessage(damage -> first, 0));
+            damage = damages.erase(damage);
+        } else
+        {
+            damage++;
+        }
     }
+
+    std::map <int, long>::iterator growth = growthTimes.begin();
+    while(growth != growthTimes.end())
+    {
+        int x = growth -> first % world -> getWidth();
+        int y = growth -> first / world -> getWidth();
+        Tile tile = world -> getTile(x, y);
+
+        if(now < growth -> second)
+        {
+            growth++;
+        } else if (tile != Tile::Grass && tile != Tile::Sapling)
+        {
+            growth = growthTimes.erase(growth);
+        } else if (isPlayerAt(x, y))
+        {
+            growth -> second = now + growRetryMs;
+            growth++;
+        } else if (tile == Tile::Grass)
+        {
+            changeTile(x, y, Tile::Sapling);
+            growth -> second = now + treeGrowTimeMs;
+            growth++;
+        } else
+        {
+            changeTile(x, y, Tile::Tree);
+            growth = growthTimes.erase(growth);
+        }
+    }
+}
+
+int Game::cellKey(int x, int y)
+{
+    return y * world -> getWidth() + x;
 }
 
 void Game::handleInput(int key)
@@ -456,6 +567,11 @@ void Game::removePlayer(int id)
 
 void Game::broadcast(const std::string& text)
 {
+    if(server == nullptr)
+    {
+        return;
+    }
+
     for (int i = 1; i < maxPlayers; i++)
     {
         if(players[i].active)
@@ -473,6 +589,13 @@ std::string Game::positionMessage(int id)
 std::string Game::tileMessage(int x, int y, Tile tile)
 {
     return "TILE " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string((int)tile);
+}
+
+std::string Game::damageMessage(int key, int hits)
+{
+    int x = key % world -> getWidth();
+    int y = key / world -> getWidth();
+    return "DAMAGE " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(hits);
 }
 
 void Game::receiveFromHost()
@@ -504,6 +627,25 @@ void Game::handleHostMessage(const std::string& text)
         if(in >> x >> y >> tile && tile >= 0 && tile < tileTypesCount && world -> isInside(x, y))
         {
             world -> setTile(x, y, (Tile)tile);
+            damages.erase(cellKey(x, y));
+        }
+        return;
+    }
+
+    if(type == "DAMAGE")
+    {
+        int x = 0;
+        int y = 0;
+        int hits = 0;
+        if(in >> x >> y >> hits && world -> isInside(x, y))
+        {
+            if(hits > 0)
+            {
+                damages[cellKey(x, y)].hits = hits;
+            } else
+            {
+                damages.erase(cellKey(x, y));
+            }
         }
         return;
     }
@@ -578,25 +720,48 @@ void Game::draw()
     renderer -> refreshScr();
 }
 
+bool Game::isCoast(int x, int y)
+{
+    return !isWater(world -> getTile(x + 1, y)) || !isWater(world -> getTile(x - 1, y))
+           || !isWater(world -> getTile(x, y + 1)) || !isWater(world -> getTile(x, y - 1));
+}
+
 void Game::drawTile(int x, int y, bool highlight)
 {
     Tile tile = world -> getTile(x, y);
     TileLook& look = looks[(int)tile];
+
+    unsigned int noise = ((unsigned int)x * 73856093u) ^ ((unsigned int)y * 19349663u);
+    std::string glyph = look.glyphs.substr((noise >> 5) % look.glyphs.size(), 1);
     short color = highlight ? look.highlight : look.color;
 
-    if(tile == Tile::DeepWater || tile == Tile::Water)
+    if(tile == Tile::DeepWater)
     {
-        // Диагональные «волны» бегут по воде, небольшой сдвиг по хешу ломает ровные полосы
-        unsigned int noise = ((unsigned int)x * 73856093u) ^ ((unsigned int)y * 19349663u);
+        // Диагональные «волны» бегут по глубокой воде, сдвиг по хешу ломает ровные полосы
         long phase = x + 2 * y + animationTime + (noise >> 7) % 3;
         if(phase % 11 == 0)
         {
-            renderer -> printxy("-", x, y, color);
-            return;
+            glyph = "-";
+        }
+    } else if (tile == Tile::Water)
+    {
+        // У берега вспыхивает пена прибоя, на мелководье изредка блики
+        long phase = animationTime + (noise >> 9) % 64;
+        if(isCoast(x, y) && phase % 8 == 0 && !highlight)
+        {
+            color = foamColor;
+        } else if (phase % 19 == 0)
+        {
+            glyph = "-";
         }
     }
 
-    renderer -> printxy(look.glyph, x, y, color);
+    if(world -> isInside(x, y) && damages.count(cellKey(x, y)) > 0)
+    {
+        color = highlight ? damagedHighlight : damagedColor;
+    }
+
+    renderer -> printxy(glyph, x, y, color);
 }
 
 void Game::drawHud()

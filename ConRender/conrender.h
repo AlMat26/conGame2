@@ -5,6 +5,7 @@
 
 #include <ncurses.h>
 #include <string>
+#include <vector>
 
 
 class ConRender
@@ -19,7 +20,7 @@ public:
     void clearScr();
     void refreshScr();
 
-    short addColor(short foreground, short background);
+    short addColor(short foreground, short background, bool bold = false);
 
     int getInput();
     void setInputTimeout(int ms);
@@ -41,6 +42,7 @@ private:
     int windowHeight = 0;
 
     short colorsCount = 1;
+    std::vector <bool> boldColors;
 };
 
 #endif // CONRENDER_H

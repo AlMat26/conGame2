@@ -13,10 +13,11 @@ enum class Tile
     Rock,
     RockFloor,
     Wall,
-    Bridge
+    Bridge,
+    Sapling
 };
 
-const int tileTypesCount = 9;
+const int tileTypesCount = 10;
 const int chunkSize = 32;
 
 struct Chunk
