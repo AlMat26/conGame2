@@ -151,7 +151,7 @@ bool World::isWalkable(int x, int y, int z)
 {
     Tile tile = getTile(x, y, z);
     return tile != Tile::DeepWater && tile != Tile::Tree && tile != Tile::Rock && tile != Tile::Wall
-           && tile != Tile::Support && tile != Tile::Ore;
+           && tile != Tile::Support && tile != Tile::Ore && tile != Tile::Rubble;
 }
 
 // Сквозь что не проходит свет
@@ -159,7 +159,7 @@ bool World::isOpaque(int x, int y, int z)
 {
     Tile tile = getTile(x, y, z);
     return tile == Tile::Tree || tile == Tile::Rock || tile == Tile::Wall
-           || tile == Tile::Support || tile == Tile::Ore;
+           || tile == Tile::Support || tile == Tile::Ore || tile == Tile::Rubble;
 }
 
 bool World::findSpawn(int& x, int& y)

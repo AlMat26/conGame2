@@ -6,6 +6,7 @@
 #include "World/world.h"
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -72,6 +73,10 @@ private:
     bool tryDig(int id, int dx, int dy);
     bool tryBuild(int id, int dx, int dy);
     void placeSupports(int x, int y, int z, int dx, int dy);
+    bool isDug(int x, int y, int z);
+    bool isStable(int x, int y, int z);
+    void checkCeiling(int id, int x, int y, int z);
+    void collapse(int key);
     void changeTile(int x, int y, int z, Tile tile);
     void updateWorld();
     int cellKey(int x, int y, int z);
@@ -127,6 +132,8 @@ private:
     std::map <int, Tile> changedTiles;
     std::map <int, Damage> damages;
     std::map <int, long> growthTimes;
+    std::set <int> dugCells;
+    std::map <int, long> collapseTimes;
 
     std::vector <int> lightMap;
     int lightLeft = 0;

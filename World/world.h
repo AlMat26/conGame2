@@ -19,10 +19,11 @@ enum class Tile
     Support,
     Ore,
     LadderDown,
-    LadderUp
+    LadderUp,
+    Rubble
 };
 
-const int tileTypesCount = 14;
+const int tileTypesCount = 15;
 const int chunkSize = 32;
 const int mineDepth = 8;
 

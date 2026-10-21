@@ -23,6 +23,14 @@ const int woodFromTree = 2;
 const int woodFromSupport = 1;
 const int woodPerTunnel = 1;
 
+// Обвалы: свод держится, если рядом крепь или стена, или если выработка узкая —
+// в квадрате 3×3 вокруг клетки меньше collapseOpenCells выкопанных клеток
+const int supportRadius = 2;
+const int collapseOpenCells = 7;
+const int collapseRadius = 4;
+const int collapseDelayMs = 2000;
+const int caveInHearRadius = 12;
+
 // Уровни света: 0 — темно, 1 — край света (только символ плотности),
 // 2 — полутень, 3 и больше — светло
 const int fullLight = 3;
@@ -51,6 +59,8 @@ static int getDurability(Tile tile)
         return 2;
     case Tile::Ore:
         return 6;
+    case Tile::Rubble:
+        return 2;
     default:
         return 1;
     }
@@ -80,6 +90,7 @@ Game::Game(ConRender* renderer)
     setLook(Tile::Ore, "*", COLOR_MAGENTA, true);
     setLook(Tile::LadderDown, ">", COLOR_YELLOW, true);
     setLook(Tile::LadderUp, "<", COLOR_YELLOW, true);
+    setLook(Tile::Rubble, "%", COLOR_WHITE, true);
 
     foamColor = renderer -> addColor(COLOR_WHITE, COLOR_BLACK, true);
     shadowColor = renderer -> addColor(COLOR_BLUE, COLOR_BLACK);
@@ -311,7 +322,7 @@ bool Game::tryDig(int id, int dx, int dy)
     if(tile == Tile::Tree || tile == Tile::Sapling)
     {
         result = Tile::Grass;
-    } else if (tile == Tile::Rock || tile == Tile::Ore || tile == Tile::Support)
+    } else if (tile == Tile::Rock || tile == Tile::Ore || tile == Tile::Support || tile == Tile::Rubble)
     {
         result = Tile::RockFloor;
     } else if (tile == Tile::Wall || (tile == Tile::Bridge && !isPlayerAt(x, y, z)))
@@ -323,14 +334,6 @@ bool Game::tryDig(int id, int dx, int dy)
     }
 
     player.lastActionMs = now;
-
-    // Новый проход под землёй сразу укрепляется — на крепь уходит дерево
-    bool needsSupport = z < 0 && (tile == Tile::Rock || tile == Tile::Ore);
-    if(needsSupport && player.wood < woodPerTunnel)
-    {
-        notify(id, "Need wood for supports");
-        return false;
-    }
 
     int key = cellKey(x, y, z);
     Damage& damage = damages[key];
@@ -363,13 +366,23 @@ bool Game::tryDig(int id, int dx, int dy)
 
     changeTile(x, y, z, result);
 
-    if(needsSupport)
+    // Под землёй выкопанное игроком может обвалиться. Если есть дерево —
+    // проход сразу укрепляется крепью по бокам
+    bool usedWood = false;
+    if(z < 0 && result == Tile::RockFloor)
     {
-        player.wood -= woodPerTunnel;
-        placeSupports(x, y, z, dx, dy);
+        dugCells.insert(key);
+
+        if(tile != Tile::Support && player.wood >= woodPerTunnel)
+        {
+            player.wood -= woodPerTunnel;
+            usedWood = true;
+            placeSupports(x, y, z, dx, dy);
+        }
+        checkCeiling(id, x, y, z);
     }
 
-    if(tile == Tile::Tree || tile == Tile::Support || tile == Tile::Ore || needsSupport)
+    if(tile == Tile::Tree || tile == Tile::Support || tile == Tile::Ore || usedWood)
     {
         sendInventory(id);
     }
@@ -420,12 +433,109 @@ void Game::placeSupports(int x, int y, int z, int dx, int dy)
     }
 }
 
+bool Game::isDug(int x, int y, int z)
+{
+    return world -> isInside(x, y, z) && dugCells.count(cellKey(x, y, z)) > 0;
+}
+
+bool Game::isStable(int x, int y, int z)
+{
+    int openCells = 0;
+
+    for (int dy = -supportRadius; dy <= supportRadius; dy++)
+    {
+        for (int dx = -supportRadius; dx <= supportRadius; dx++)
+        {
+            Tile tile = world -> getTile(x + dx, y + dy, z);
+            if(tile == Tile::Support || tile == Tile::Wall)
+            {
+                return true;
+            }
+            if(std::abs(dx) <= 1 && std::abs(dy) <= 1 && isDug(x + dx, y + dy, z))
+            {
+                openCells++;
+            }
+        }
+    }
+    return openCells < collapseOpenCells;
+}
+
+// После копания проверяет выработку рядом: если свод не держится — через пару секунд обвал
+void Game::checkCeiling(int id, int x, int y, int z)
+{
+    for (int dy = -collapseRadius; dy <= collapseRadius; dy++)
+    {
+        for (int dx = -collapseRadius; dx <= collapseRadius; dx++)
+        {
+            if(isDug(x + dx, y + dy, z) && !isStable(x + dx, y + dy, z))
+            {
+                if(collapseTimes.count(cellKey(x, y, z)) == 0)
+                {
+                    collapseTimes[cellKey(x, y, z)] = nowMs() + collapseDelayMs;
+                    notify(id, "The ceiling is cracking!");
+                }
+                return;
+            }
+        }
+    }
+}
+
+// Неустойчивые выкопанные клетки рядом засыпает завалом. Клетку с игроком — нет:
+// его запирает, выкапываться придётся самому
+void Game::collapse(int key)
+{
+    int centerX = 0;
+    int centerY = 0;
+    int z = 0;
+    keyToCell(key, centerX, centerY, z);
+
+    std::vector <Point> fallen;
+    for (int dy = -collapseRadius; dy <= collapseRadius; dy++)
+    {
+        for (int dx = -collapseRadius; dx <= collapseRadius; dx++)
+        {
+            int x = centerX + dx;
+            int y = centerY + dy;
+            if(isDug(x, y, z) && !isStable(x, y, z) && !isPlayerAt(x, y, z))
+            {
+                Point point;
+                point.x = x;
+                point.y = y;
+                fallen.push_back(point);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < fallen.size(); i++)
+    {
+        changeTile(fallen[i].x, fallen[i].y, z, Tile::Rubble);
+    }
+
+    if(fallen.empty())
+    {
+        return;
+    }
+
+    for (int i = 0; i < maxPlayers; i++)
+    {
+        Player& player = players[i];
+        if(player.active && player.z == z && std::abs(player.x - centerX) + std::abs(player.y - centerY) <= caveInHearRadius)
+        {
+            notify(i, "Cave-in!");
+        }
+    }
+}
+
 // Хост запоминает все изменения мира, чтобы отдать их тем, кто подключится позже
 void Game::changeTile(int x, int y, int z, Tile tile)
 {
     world -> setTile(x, y, z, tile);
     changedTiles[cellKey(x, y, z)] = tile;
     damages.erase(cellKey(x, y, z));
+    if(tile != Tile::RockFloor)
+    {
+        dugCells.erase(cellKey(x, y, z));
+    }
 
     broadcast(tileMessage(x, y, z, tile));
 }
@@ -445,6 +555,19 @@ void Game::updateWorld()
         } else
         {
             damage++;
+        }
+    }
+
+    std::map <int, long>::iterator collapsing = collapseTimes.begin();
+    while(collapsing != collapseTimes.end())
+    {
+        if(now >= collapsing -> second)
+        {
+            collapse(collapsing -> first);
+            collapsing = collapseTimes.erase(collapsing);
+        } else
+        {
+            collapsing++;
         }
     }
 
