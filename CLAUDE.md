@@ -7,7 +7,11 @@
 
 - `ConRender/` — класс `ConRender`, вывод в терминал через ncurses.
   Координаты `printxy(str, x, y)` отсчитываются от центра экрана, ось Y вверх,
-  `setViewPosexy` смещает «камеру».
+  `setViewPosexy` смещает «камеру». Всё, что за краем экрана, отсекается.
+  Цвета — `addColor(fg, bg)` возвращает номер, который передаётся в `printxy`.
+  `setInputTimeout(ms)` делает ввод неблокирующим (`getInput` вернёт `ERR`),
+  при изменении размера окна `getInput` вернёт `KEY_RESIZE`.
+  Только ASCII: отсечение считает байты, а не символы UTF-8.
 - `Network/` — TCP через Boost.Asio, два класса:
   `NetworkServer` (`acceptConnection`, `send`/`receive` по номеру клиента)
   и `NetworkClient` (`connectTo`, `send`/`receive`). Сообщение передаётся как

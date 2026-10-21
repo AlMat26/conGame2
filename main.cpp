@@ -4,8 +4,10 @@
 int main(int argc, char **argv) {
 
     ConRender renderer;
+    short yellow = renderer.addColor(COLOR_YELLOW, COLOR_BLACK);
+
     renderer.clearScr();
-    renderer.printxy("A", 0, 0);
+    renderer.printxy("A", 0, 0, yellow);
     renderer.printxy("s - server, c - client", 0, -2);
     renderer.refreshScr();
 
