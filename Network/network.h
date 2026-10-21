@@ -5,6 +5,14 @@
 #include <vector>
 #include <string>
 
+struct NetworkConnection
+{
+    NetworkConnection(boost::asio::io_context& IOservice) : sock (IOservice) {}
+
+    boost::asio::ip::tcp::socket sock;
+    std::string received;
+};
+
 class NetworkServer
 {
 public:
@@ -12,11 +20,15 @@ public:
     NetworkServer(const NetworkServer&) = delete;
     NetworkServer& operator= (const NetworkServer&) = delete;
 
-    bool acceptConnection ();
-    size_t clientsCount ();
+    bool start ();
+    int acceptConnection ();
+    void disconnect (int id);
+    bool isConnected (int id);
 
-    bool send (const std::string& str, size_t id);
-    bool receive (std::string& str, size_t id);
+    bool send (const std::string& str, int id);
+    bool receive (std::string& str, int id);
+
+    std::string getLocalAddress ();
 
     ~NetworkServer ();
 private:
@@ -24,7 +36,7 @@ private:
     boost::asio::io_context IOservice;
 
     boost::asio::ip::tcp::acceptor* acceptor = nullptr;
-    std::vector <boost::asio::ip::tcp::socket> clientSockets;
+    std::vector <NetworkConnection*> clients;
 };
 
 class NetworkClient
@@ -35,6 +47,8 @@ public:
     NetworkClient& operator= (const NetworkClient&) = delete;
 
     bool connectTo(std::string ip);
+    void disconnect ();
+    bool isConnected ();
 
     bool send (const std::string& str);
     bool receive (std::string& str);
@@ -44,7 +58,7 @@ private:
     unsigned int port;
     boost::asio::io_context IOservice;
 
-    boost::asio::ip::tcp::socket* sock = nullptr;
+    NetworkConnection* connection = nullptr;
 };
 
 #endif // NETWORK_H

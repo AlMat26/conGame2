@@ -1,6 +1,9 @@
 #include "network.h"
 
 #include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <cstring>
 
 using namespace boost::asio;
 
@@ -8,6 +11,8 @@ using namespace boost::asio;
 // Ограничение защищает от выделения гигабайт по мусорному заголовку.
 static const uint32_t maxMessageSize = 1024 * 1024;
 
+// Сокеты неблокирующие, чтобы сеть не останавливала игровой цикл.
+// Отправка всё равно дожидается, пока сообщение уйдёт целиком.
 static bool sendMessage(ip::tcp::socket& sock, const std::string& str)
 {
     if(str.size() > maxMessageSize)
@@ -16,36 +21,109 @@ static bool sendMessage(ip::tcp::socket& sock, const std::string& str)
     }
 
     uint32_t sizeOfStream = htonl(str.size());
+    std::string data ((const char*)&sizeOfStream, sizeof(sizeOfStream));
+    data += str;
 
-    std::vector <const_buffer> buffers;
-    buffers.push_back(buffer(&sizeOfStream, sizeof(sizeOfStream)));
-    buffers.push_back(buffer(str));
-
+    size_t sent = 0;
     boost::system::error_code error;
-    boost::asio::write(sock, buffers, error);
-    return !error;
+
+    while(sent < data.size())
+    {
+        sent += sock.write_some(buffer(data.data() + sent, data.size() - sent), error);
+        if(error == boost::asio::error::would_block)
+        {
+            sock.wait(socket_base::wait_write, error);
+        }
+        if(error)
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
-static bool receiveMessage(ip::tcp::socket& sock, std::string& str)
+// Забирает из сокета всё, что уже пришло. false — соединение закрыто
+static bool readAvailable(NetworkConnection& connection)
 {
-    uint32_t sizeOfStream = 0;
+    char data[4096];
     boost::system::error_code error;
 
-    boost::asio::read(sock, buffer(&sizeOfStream, sizeof(sizeOfStream)), error);
-    if(error)
+    while(true)
+    {
+        size_t length = connection.sock.read_some(buffer(data, sizeof(data)), error);
+        if(error == boost::asio::error::would_block)
+        {
+            return true;
+        }
+        if(error)
+        {
+            return false;
+        }
+        connection.received.append(data, length);
+    }
+}
+
+static bool extractMessage(std::string& received, std::string& str, bool& broken)
+{
+    if(received.size() < sizeof(uint32_t))
     {
         return false;
     }
 
+    uint32_t sizeOfStream = 0;
+    memcpy(&sizeOfStream, received.data(), sizeof(sizeOfStream));
     sizeOfStream = ntohl(sizeOfStream);
+
     if(sizeOfStream > maxMessageSize)
     {
+        broken = true;
+        return false;
+    }
+    if(received.size() < sizeof(uint32_t) + sizeOfStream)
+    {
         return false;
     }
 
-    str.resize(sizeOfStream);
-    boost::asio::read(sock, buffer(str), error);
-    return !error;
+    str = received.substr(sizeof(uint32_t), sizeOfStream);
+    received.erase(0, sizeof(uint32_t) + sizeOfStream);
+    return true;
+}
+
+// true — получено целое сообщение. Если соединение потеряно, closed = true
+static bool receiveMessage(NetworkConnection& connection, std::string& str, bool& closed)
+{
+    bool broken = false;
+
+    if(extractMessage(connection.received, str, broken))
+    {
+        return true;
+    }
+
+    bool alive = readAvailable(connection);
+    if(extractMessage(connection.received, str, broken))
+    {
+        return true;
+    }
+
+    closed = !alive || broken;
+    return false;
+}
+
+static void setupSocket(ip::tcp::socket& sock)
+{
+    boost::system::error_code error;
+    sock.non_blocking(true, error);
+    sock.set_option(ip::tcp::no_delay(true), error);
+}
+
+static void closeSocket(ip::tcp::socket& sock)
+{
+    boost::system::error_code error;
+    if(sock.is_open())
+    {
+        sock.shutdown(socket_base::shutdown_both, error);
+        sock.close(error);
+    }
 }
 
 NetworkServer::NetworkServer(unsigned int port)
@@ -53,81 +131,147 @@ NetworkServer::NetworkServer(unsigned int port)
     this -> port = port;
 }
 
-bool NetworkServer::acceptConnection()
+bool NetworkServer::start()
 {
-    boost::system::error_code error;
-
-    if(acceptor == nullptr)
+    if(acceptor != nullptr)
     {
-        ip::tcp::endpoint endpoint (ip::tcp::v4(), port);
-        acceptor = new ip::tcp::acceptor (IOservice);
-
-        acceptor -> open(endpoint.protocol(), error);
-        if(!error)
-        {
-            acceptor -> set_option(ip::tcp::acceptor::reuse_address(true), error);
-        }
-        if(!error)
-        {
-            acceptor -> bind(endpoint, error);
-        }
-        if(!error)
-        {
-            acceptor -> listen(socket_base::max_listen_connections, error);
-        }
-
-        if(error)
-        {
-            delete acceptor;
-            acceptor = nullptr;
-            return false;
-        }
+        return true;
     }
 
-    clientSockets.push_back(ip::tcp::socket(IOservice));
-    acceptor -> accept(clientSockets[clientSockets.size() - 1], error);
+    boost::system::error_code error;
+    ip::tcp::endpoint endpoint (ip::tcp::v4(), port);
+    acceptor = new ip::tcp::acceptor (IOservice);
+
+    acceptor -> open(endpoint.protocol(), error);
+    if(!error)
+    {
+        acceptor -> set_option(ip::tcp::acceptor::reuse_address(true), error);
+    }
+    if(!error)
+    {
+        acceptor -> bind(endpoint, error);
+    }
+    if(!error)
+    {
+        acceptor -> listen(socket_base::max_listen_connections, error);
+    }
+    if(!error)
+    {
+        acceptor -> non_blocking(true, error);
+    }
 
     if(error)
     {
-        clientSockets.pop_back();
+        delete acceptor;
+        acceptor = nullptr;
         return false;
     }
     return true;
 }
 
-size_t NetworkServer::clientsCount()
+int NetworkServer::acceptConnection()
 {
-    return clientSockets.size();
+    if(acceptor == nullptr)
+    {
+        return -1;
+    }
+
+    NetworkConnection* connection = new NetworkConnection (IOservice);
+    boost::system::error_code error;
+
+    acceptor -> accept(connection -> sock, error);
+    if(error)
+    {
+        delete connection;
+        return -1;
+    }
+
+    setupSocket(connection -> sock);
+    clients.push_back(connection);
+    return clients.size() - 1;
 }
 
-bool NetworkServer::send(const std::string& str, size_t id)
+void NetworkServer::disconnect(int id)
 {
-    if(id >= clientSockets.size())
+    if(!isConnected(id))
+    {
+        return;
+    }
+
+    closeSocket(clients[id] -> sock);
+    delete clients[id];
+    clients[id] = nullptr;
+}
+
+bool NetworkServer::isConnected(int id)
+{
+    return id >= 0 && id < (int)clients.size() && clients[id] != nullptr;
+}
+
+bool NetworkServer::send(const std::string& str, int id)
+{
+    if(!isConnected(id))
     {
         return false;
     }
-    return sendMessage(clientSockets[id], str);
+    return sendMessage(clients[id] -> sock, str);
 }
 
-bool NetworkServer::receive(std::string& str, size_t id)
+bool NetworkServer::receive(std::string& str, int id)
 {
-    if(id >= clientSockets.size())
+    if(!isConnected(id))
     {
         return false;
     }
-    return receiveMessage(clientSockets[id], str);
+
+    bool closed = false;
+    if(receiveMessage(*clients[id], str, closed))
+    {
+        return true;
+    }
+    if(closed)
+    {
+        disconnect(id);
+    }
+    return false;
+}
+
+// Первый IPv4-адрес, кроме 127.0.0.1 — его хост сообщает друзьям
+std::string NetworkServer::getLocalAddress()
+{
+    std::string result = "127.0.0.1";
+    ifaddrs* addresses = nullptr;
+
+    if(getifaddrs(&addresses) != 0)
+    {
+        return result;
+    }
+
+    for (ifaddrs* address = addresses; address != nullptr; address = address -> ifa_next)
+    {
+        if(address -> ifa_addr == nullptr || address -> ifa_addr -> sa_family != AF_INET)
+        {
+            continue;
+        }
+
+        char text[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &((sockaddr_in*)address -> ifa_addr) -> sin_addr, text, sizeof(text));
+        if(strcmp(text, "127.0.0.1") != 0)
+        {
+            result = text;
+            break;
+        }
+    }
+
+    freeifaddrs(addresses);
+    return result;
 }
 
 NetworkServer::~NetworkServer()
 {
-    boost::system::error_code error;
-
-    for (size_t i = 0; i < clientSockets.size(); i++)
+    for (size_t i = 0; i < clients.size(); i++)
     {
-        if(clientSockets[i].is_open())
-        {
-            clientSockets[i].close(error);
-        }
+        disconnect(i);
     }
 
     delete acceptor;
@@ -148,46 +292,67 @@ bool NetworkClient::connectTo(std::string ip)
         return false;
     }
 
-    if(sock == nullptr)
-    {
-        sock = new ip::tcp::socket (IOservice);
-    } else if (sock -> is_open())
-    {
-        sock -> close(error);
-    }
+    disconnect();
+    connection = new NetworkConnection (IOservice);
 
     ip::tcp::endpoint endpoint (address, port);
-    sock -> connect(endpoint, error);
-    return !error;
+    connection -> sock.connect(endpoint, error);
+    if(error)
+    {
+        disconnect();
+        return false;
+    }
+
+    setupSocket(connection -> sock);
+    return true;
+}
+
+void NetworkClient::disconnect()
+{
+    if(connection == nullptr)
+    {
+        return;
+    }
+
+    closeSocket(connection -> sock);
+    delete connection;
+    connection = nullptr;
+}
+
+bool NetworkClient::isConnected()
+{
+    return connection != nullptr;
 }
 
 bool NetworkClient::send(const std::string& str)
 {
-    if(sock == nullptr)
+    if(connection == nullptr)
     {
         return false;
     }
-    return sendMessage(*sock, str);
+    return sendMessage(connection -> sock, str);
 }
 
 bool NetworkClient::receive(std::string& str)
 {
-    if(sock == nullptr)
+    if(connection == nullptr)
     {
         return false;
     }
-    return receiveMessage(*sock, str);
+
+    bool closed = false;
+    if(receiveMessage(*connection, str, closed))
+    {
+        return true;
+    }
+    if(closed)
+    {
+        disconnect();
+    }
+    return false;
 }
 
 NetworkClient::~NetworkClient()
 {
-    if(sock != nullptr)
-    {
-        boost::system::error_code error;
-        if(sock -> is_open())
-        {
-            sock -> close(error);
-        }
-        delete sock;
-    }
+    disconnect();
 }

@@ -1,5 +1,4 @@
 #include "ConRender/conrender.h"
-#include "Network/network.h"
 #include "Game/game.h"
 
 #include <cstdio>
@@ -13,10 +12,10 @@ static void printUsage(const char* name)
 {
     fprintf(stderr,
             "Usage:\n"
-            "  %s                    play\n"
-            "  %s play [seed]        play on the given world seed\n"
-            "  %s host [port]        test connection: host\n"
-            "  %s join <ip> [port]   test connection: join\n"
+            "  %s                    play alone\n"
+            "  %s play [seed]        play alone on the given world seed\n"
+            "  %s host [port]        host a game for friends\n"
+            "  %s join <ip> [port]   join a friend's game\n"
             "Default port: %u\n",
             name, name, name, name, defaultPort);
 }
@@ -44,57 +43,6 @@ static bool parsePort(const char* str, unsigned int& port)
     }
     port = value;
     return true;
-}
-
-static void runHostTest(ConRender& renderer, unsigned int port)
-{
-    NetworkServer networkS (port);
-    renderer.printxy("Hosting on port " + std::to_string(port), 0, -3);
-    renderer.printxy("Waiting for client...", 0, -4);
-    renderer.refreshScr();
-
-    if(networkS.acceptConnection())
-    {
-        renderer.printxy("Client connected.", 0, -5);
-
-        std::string message;
-        if(networkS.send("Hello from server", 0) && networkS.receive(message, 0))
-        {
-            renderer.printxy("Received: " + message, 0, -6);
-        } else
-        {
-            renderer.printxy("Message exchange failed", 0, -6);
-        }
-    } else
-    {
-        renderer.printxy("Failed to open port " + std::to_string(port), 0, -5);
-    }
-}
-
-static void runJoinTest(ConRender& renderer, std::string ip, unsigned int port)
-{
-    std::string address = ip + ":" + std::to_string(port);
-
-    NetworkClient networkC (port);
-    renderer.printxy("Connecting to " + address + "...", 0, -3);
-    renderer.refreshScr();
-
-    if(networkC.connectTo(ip))
-    {
-        renderer.printxy("Connected to " + address, 0, -4);
-
-        std::string message;
-        if(networkC.receive(message) && networkC.send("Hello from client"))
-        {
-            renderer.printxy("Received: " + message, 0, -5);
-        } else
-        {
-            renderer.printxy("Message exchange failed", 0, -5);
-        }
-    } else
-    {
-        renderer.printxy("Failed to connect to " + address, 0, -4);
-    }
 }
 
 int main(int argc, char **argv) {
@@ -144,29 +92,35 @@ int main(int argc, char **argv) {
     }
 
     ConRender renderer;
+    Game game (&renderer);
+    bool started = false;
 
     if(mode == 'p')
     {
-        Game game (&renderer, seed);
-        game.run();
-        return 0;
-    }
-
-    short yellow = renderer.addColor(COLOR_YELLOW, COLOR_BLACK);
-    renderer.clearScr();
-    renderer.printxy("A", 0, 0, yellow);
-
-    if(mode == 's')
+        started = game.startSolo(seed);
+    } else if (mode == 's')
     {
-        runHostTest(renderer, port);
+        started = game.startHost(seed, port);
     } else
     {
-        runJoinTest(renderer, ip, port);
+        started = game.startJoin(ip, port);
     }
 
-    renderer.refreshScr();
+    if(started)
+    {
+        game.run();
+    }
 
-    renderer.getInput();
+    std::string message = game.getMessage();
+    if(!message.empty())
+    {
+        renderer.clearScr();
+        renderer.setViewPosexy(0, 0);
+        renderer.printxy(message, -(int)message.size() / 2, 0);
+        renderer.printxy("Press any key", -6, -2);
+        renderer.refreshScr();
+        renderer.getInput();
+    }
 
     return 0;
 }

@@ -1,15 +1,25 @@
 #include "game.h"
 
 #include <chrono>
+#include <cstdlib>
+#include <sstream>
+#include <thread>
 
 const int worldSizeInChunks = 8;
-const int frameTimeMs = 50;
+const int frameTimeMs = 30;
 const int waterFrameMs = 250;
+const int moveCooldownMs = 30;
+const int joinTimeoutMs = 5000;
 
-Game::Game(ConRender* renderer, unsigned int seed)
+static long nowMs()
+{
+    return std::chrono::duration_cast <std::chrono::milliseconds> (
+               std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+Game::Game(ConRender* renderer)
 {
     this -> renderer = renderer;
-    world = new World (worldSizeInChunks, worldSizeInChunks, seed);
 
     short blue = renderer -> addColor(COLOR_BLUE, COLOR_BLACK);
     short cyan = renderer -> addColor(COLOR_CYAN, COLOR_BLACK);
@@ -23,14 +33,81 @@ Game::Game(ConRender* renderer, unsigned int seed)
     looks[(int)Tile::Tree] = { "T", green };
     looks[(int)Tile::Rock] = { "#", 1 };
 
-    playerColor = renderer -> addColor(COLOR_BLACK, COLOR_YELLOW);
+    playerColors[0] = renderer -> addColor(COLOR_BLACK, COLOR_YELLOW);
+    playerColors[1] = renderer -> addColor(COLOR_BLACK, COLOR_CYAN);
+    playerColors[2] = renderer -> addColor(COLOR_BLACK, COLOR_MAGENTA);
+    playerColors[3] = renderer -> addColor(COLOR_BLACK, COLOR_RED);
     hudColor = renderer -> addColor(COLOR_BLACK, COLOR_WHITE);
+}
 
-    if(!world -> findSpawn(playerX, playerY))
+bool Game::startSolo(unsigned int seed)
+{
+    createWorld(seed);
+    return spawnPlayer(0);
+}
+
+bool Game::startHost(unsigned int seed, unsigned int port)
+{
+    server = new NetworkServer (port);
+    if(!server -> start())
     {
-        playerX = world -> getWidth() / 2;
-        playerY = world -> getHeight() / 2;
+        message = "Failed to open port " + std::to_string(port);
+        return false;
     }
+
+    hostAddress = server -> getLocalAddress() + ":" + std::to_string(port);
+    createWorld(seed);
+    return spawnPlayer(0);
+}
+
+bool Game::startJoin(std::string ip, unsigned int port)
+{
+    std::string address = ip + ":" + std::to_string(port);
+    showStatus("Connecting to " + address + "...");
+
+    client = new NetworkClient (port);
+    if(!client -> connectTo(ip))
+    {
+        message = "Failed to connect to " + address;
+        return false;
+    }
+
+    showStatus("Waiting for host...");
+
+    long startTime = nowMs();
+    while(nowMs() - startTime < joinTimeoutMs)
+    {
+        std::string text;
+        if(client -> receive(text))
+        {
+            std::istringstream in (text);
+            std::string type;
+            int id = -1;
+            unsigned int seed = 0;
+            in >> type;
+
+            if(type == "WELCOME" && in >> id >> seed && id >= 0 && id < maxPlayers)
+            {
+                myId = id;
+                createWorld(seed);
+                return true;
+            } else if (type == "FULL")
+            {
+                message = "Server is full";
+                return false;
+            }
+        }
+
+        if(!client -> isConnected())
+        {
+            message = "Host closed the connection";
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    message = "Host did not answer";
+    return false;
 }
 
 void Game::run()
@@ -44,10 +121,91 @@ void Game::run()
         {
             handleInput(key);
         }
+
+        if(server != nullptr)
+        {
+            acceptPlayers();
+            receiveFromClients();
+        }
+        if(client != nullptr)
+        {
+            receiveFromHost();
+        }
+
         draw();
     }
 
     renderer -> setInputTimeout(-1);
+}
+
+std::string Game::getMessage()
+{
+    return message;
+}
+
+void Game::createWorld(unsigned int seed)
+{
+    delete world;
+    world = new World (worldSizeInChunks, worldSizeInChunks, seed);
+}
+
+// Ищет ближайшую к точке появления свободную клетку, чтобы игроки не стояли друг на друге
+bool Game::spawnPlayer(int id)
+{
+    int spawnX = world -> getWidth() / 2;
+    int spawnY = world -> getHeight() / 2;
+    world -> findSpawn(spawnX, spawnY);
+
+    for (int radius = 0; radius < 10; radius++)
+    {
+        for (int dy = -radius; dy <= radius; dy++)
+        {
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                if(isFree(spawnX + dx, spawnY + dy))
+                {
+                    players[id].active = true;
+                    players[id].x = spawnX + dx;
+                    players[id].y = spawnY + dy;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool Game::isFree(int x, int y)
+{
+    if(!world -> isWalkable(x, y))
+    {
+        return false;
+    }
+
+    for (int i = 0; i < maxPlayers; i++)
+    {
+        if(players[i].active && players[i].x == x && players[i].y == y)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Game::tryMove(int id, int dx, int dy)
+{
+    Player& player = players[id];
+    long now = nowMs();
+
+    if(now - player.lastMoveMs < moveCooldownMs || !isFree(player.x + dx, player.y + dy))
+    {
+        return false;
+    }
+
+    player.x += dx;
+    player.y += dy;
+    player.lastMoveMs = now;
+    return true;
 }
 
 void Game::handleInput(int key)
@@ -76,35 +234,203 @@ void Game::handleInput(int key)
     }
 }
 
+// Клиент только сообщает о намерении, двигает игрока хост
 void Game::movePlayer(int dx, int dy)
 {
-    if(world -> isWalkable(playerX + dx, playerY + dy))
+    if(client != nullptr)
     {
-        playerX += dx;
-        playerY += dy;
+        client -> send("MOVE " + std::to_string(dx) + " " + std::to_string(dy));
+        return;
     }
+
+    if(tryMove(myId, dx, dy) && server != nullptr)
+    {
+        broadcast(positionMessage(myId));
+    }
+}
+
+void Game::acceptPlayers()
+{
+    int connectionId = server -> acceptConnection();
+
+    while(connectionId >= 0)
+    {
+        int id = -1;
+        for (int i = 1; i < maxPlayers && id < 0; i++)
+        {
+            if(!players[i].active)
+            {
+                id = i;
+            }
+        }
+
+        if(id < 0 || !spawnPlayer(id))
+        {
+            server -> send("FULL", connectionId);
+            server -> disconnect(connectionId);
+        } else
+        {
+            players[id].connectionId = connectionId;
+            server -> send("WELCOME " + std::to_string(id) + " " + std::to_string(world -> getSeed()), connectionId);
+
+            for (int i = 0; i < maxPlayers; i++)
+            {
+                if(players[i].active && i != id)
+                {
+                    server -> send(positionMessage(i), connectionId);
+                }
+            }
+            broadcast(positionMessage(id));
+        }
+
+        connectionId = server -> acceptConnection();
+    }
+}
+
+void Game::receiveFromClients()
+{
+    for (int id = 1; id < maxPlayers; id++)
+    {
+        if(!players[id].active)
+        {
+            continue;
+        }
+
+        std::string text;
+        while(server -> receive(text, players[id].connectionId))
+        {
+            handleClientMessage(id, text);
+        }
+
+        if(!server -> isConnected(players[id].connectionId))
+        {
+            removePlayer(id);
+        }
+    }
+}
+
+void Game::handleClientMessage(int id, const std::string& text)
+{
+    std::istringstream in (text);
+    std::string type;
+    in >> type;
+
+    if(type == "MOVE")
+    {
+        int dx = 0;
+        int dy = 0;
+        if(in >> dx >> dy && std::abs(dx) + std::abs(dy) == 1 && tryMove(id, dx, dy))
+        {
+            broadcast(positionMessage(id));
+        }
+    }
+}
+
+void Game::removePlayer(int id)
+{
+    server -> disconnect(players[id].connectionId);
+    players[id] = Player();
+    broadcast("LEAVE " + std::to_string(id));
+}
+
+void Game::broadcast(const std::string& text)
+{
+    for (int i = 1; i < maxPlayers; i++)
+    {
+        if(players[i].active)
+        {
+            server -> send(text, players[i].connectionId);
+        }
+    }
+}
+
+std::string Game::positionMessage(int id)
+{
+    return "POS " + std::to_string(id) + " " + std::to_string(players[id].x) + " " + std::to_string(players[id].y);
+}
+
+void Game::receiveFromHost()
+{
+    std::string text;
+    while(client -> receive(text))
+    {
+        handleHostMessage(text);
+    }
+
+    if(!client -> isConnected())
+    {
+        message = "Disconnected from host";
+        running = false;
+    }
+}
+
+void Game::handleHostMessage(const std::string& text)
+{
+    std::istringstream in (text);
+    std::string type;
+    int id = -1;
+    in >> type >> id;
+
+    if(id < 0 || id >= maxPlayers)
+    {
+        return;
+    }
+
+    if(type == "POS")
+    {
+        int x = 0;
+        int y = 0;
+        if(in >> x >> y)
+        {
+            players[id].active = true;
+            players[id].x = x;
+            players[id].y = y;
+        }
+    } else if (type == "LEAVE")
+    {
+        players[id] = Player();
+    }
+}
+
+void Game::showStatus(std::string text)
+{
+    renderer -> clearScr();
+    renderer -> setViewPosexy(0, 0);
+    renderer -> printxy(text, -(int)text.size() / 2, 0);
+    renderer -> refreshScr();
 }
 
 void Game::draw()
 {
-    animationTime = std::chrono::duration_cast <std::chrono::milliseconds> (
-                        std::chrono::steady_clock::now().time_since_epoch()).count() / waterFrameMs;
+    animationTime = nowMs() / waterFrameMs;
 
+    Player& me = players[myId];
     renderer -> clearScr();
-    renderer -> setViewPosexy(-playerX, playerY);
+    renderer -> setViewPosexy(-me.x, me.y);
 
     int halfWidth = renderer -> getWidth() / 2 + 1;
     int halfHeight = renderer -> getHeight() / 2 + 1;
 
-    for (int y = playerY - halfHeight; y <= playerY + halfHeight; y++)
+    for (int y = me.y - halfHeight; y <= me.y + halfHeight; y++)
     {
-        for (int x = playerX - halfWidth; x <= playerX + halfWidth; x++)
+        for (int x = me.x - halfWidth; x <= me.x + halfWidth; x++)
         {
             drawTile(x, y);
         }
     }
 
-    renderer -> printxy("@", playerX, playerY, playerColor);
+    for (int i = 0; i < maxPlayers; i++)
+    {
+        if(players[i].active && i != myId)
+        {
+            renderer -> printxy("@", players[i].x, players[i].y, playerColors[i]);
+        }
+    }
+    if(me.active)
+    {
+        renderer -> printxy("@", me.x, me.y, playerColors[myId]);
+    }
+
     drawHud();
     renderer -> refreshScr();
 }
@@ -131,9 +457,28 @@ void Game::drawTile(int x, int y)
 
 void Game::drawHud()
 {
-    std::string position = " x:" + std::to_string(playerX) + " y:" + std::to_string(playerY)
-                           + "  seed:" + std::to_string(world -> getSeed()) + " ";
-    renderer -> printScr(position, 0, 0, hudColor);
+    int playersCount = 0;
+    for (int i = 0; i < maxPlayers; i++)
+    {
+        if(players[i].active)
+        {
+            playersCount++;
+        }
+    }
+
+    std::string info = " x:" + std::to_string(players[myId].x) + " y:" + std::to_string(players[myId].y)
+                       + "  seed:" + std::to_string(world -> getSeed());
+    if(server != nullptr)
+    {
+        info += "  host " + hostAddress;
+    }
+    if(server != nullptr || client != nullptr)
+    {
+        info += "  players:" + std::to_string(playersCount) + "/" + std::to_string(maxPlayers);
+    }
+    info += " ";
+    renderer -> printScr(info, 0, 0, hudColor);
+    renderer -> printScr("@", info.size() + 1, 0, playerColors[myId]);
 
     std::string help = " arrows/WASD - move, q - quit ";
     renderer -> printScr(help, 0, renderer -> getHeight() - 1, hudColor);
@@ -141,5 +486,7 @@ void Game::drawHud()
 
 Game::~Game()
 {
+    delete client;
+    delete server;
     delete world;
 }

@@ -29,21 +29,27 @@
   `setInputTimeout(ms)` делает ввод неблокирующим (`getInput` вернёт `ERR`),
   при изменении размера окна `getInput` вернёт `KEY_RESIZE`.
   Только ASCII: отсечение считает байты, а не символы UTF-8.
-- `Network/` — TCP через Boost.Asio, два класса:
-  `NetworkServer` (`acceptConnection`, `send`/`receive` по номеру клиента)
-  и `NetworkClient` (`connectTo`, `send`/`receive`). Сообщение передаётся как
-  4 байта длины (big-endian) + данные. Ошибки сети возвращаются как `false`,
-  исключения не бросаются.
+- `Network/` — TCP через Boost.Asio, **неблокирующие** сокеты: сеть опрашивается
+  каждый кадр и не останавливает игровой цикл. `NetworkServer` (`start`,
+  `acceptConnection` → id или -1, `send`/`receive` по id, `isConnected`,
+  `disconnect`, `getLocalAddress`) и `NetworkClient` (`connectTo` — блокирующий,
+  `send`/`receive`, `isConnected`). `receive` возвращает `true`, только если пришло
+  целое сообщение; потерю связи видно по `isConnected`. Сообщение — 4 байта длины
+  (big-endian) + данные, лимит 1 МБ. Исключения не бросаются.
 - `World/` — `World`: тайлы (`enum class Tile`), чанки 32×32, создаются лениво
   при первом обращении. Генерация — фрактальный value noise по seed: высота →
   глубокая вода / вода / песок / трава / скала, второй шум — лес. К краям мир
   уходит в океан (остров). Мир 8×8 чанков = 256×256. Ось Y вверх.
-- `Game/` — `Game`: игровой цикл (кадр 50 мс через `setInputTimeout`), ходьба,
-  отрисовка видимой части мира с камерой на игроке, анимация воды, HUD.
+- `Game/` — `Game`: режимы `startSolo` / `startHost` / `startJoin`, игровой цикл
+  (кадр 30 мс через `setInputTimeout`), игроки (до 4, массив `players`, id = слот,
+  хост — 0), отрисовка с камерой на своём игроке, анимация воды, HUD.
   Внешний вид тайлов — таблица `looks` в конструкторе `Game`.
-- `main.cpp` — разбор аргументов; `host` / `join` пока только тест соединения
-  (обмен приветствиями), до этапа 2.
-
+  Хост решает всё: клиент шлёт `MOVE dx dy`, хост проверяет (соседняя клетка,
+  проходимость, другие игроки, не чаще раза в 30 мс) и рассылает позиции.
+  Протокол — текст: клиент → хост `MOVE dx dy`; хост → клиент
+  `WELCOME id seed`, `POS id x y`, `LEAVE id`, `FULL`.
+- `main.cpp` — разбор аргументов, выбор режима, вывод итогового сообщения
+  (ошибка подключения, «Disconnected from host» и т.п.).
 
 ## Стиль кода — ОБЯЗАТЕЛЬНО
 
@@ -76,10 +82,10 @@ cmake --build build
 ```
 
 ```sh
-./build/congame                    # играть (случайный мир)
-./build/congame play <seed>        # играть в мире с заданным seed
-./build/congame host [port]        # тест сети: хост
-./build/congame join <ip> [port]   # тест сети: клиент
+./build/congame                    # играть одному (случайный мир)
+./build/congame play <seed>        # играть одному в мире с заданным seed
+./build/congame host [port]        # хостить игру
+./build/congame join <ip> [port]   # подключиться к хосту
 ```
 
 Управление: стрелки / WASD — ходьба, `q` — выход.
