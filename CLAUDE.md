@@ -8,10 +8,13 @@
 - `ConRender/` — класс `ConRender`, вывод в терминал через ncurses.
   Координаты `printxy(str, x, y)` отсчитываются от центра экрана, ось Y вверх,
   `setViewPosexy` смещает «камеру».
-- `Network/` — класс `Network`, TCP через Boost.Asio: сервер (`acceptConnection`)
-  и клиент (`connectTo`). `send` / `receive` ещё не реализованы.
+- `Network/` — TCP через Boost.Asio, два класса:
+  `NetworkServer` (`acceptConnection`, `send`/`receive` по номеру клиента)
+  и `NetworkClient` (`connectTo`, `send`/`receive`). Сообщение передаётся как
+  4 байта длины (big-endian) + данные. Ошибки сети возвращаются как `false`,
+  исключения не бросаются.
 - `main.cpp` — тест соединения: `s` — сервер на порту 9999, `c` — клиент
-  на `127.0.0.1:9999`.
+  на `127.0.0.1:9999`; стороны обмениваются приветствиями.
 
 Игровой логики, игрового цикла и протокола пока нет.
 
@@ -33,8 +36,8 @@
 
 ## Сборка
 
-Зависимости: CMake ≥ 3.0, компилятор C++, ncurses (`libncurses-dev`),
-Boost.System (`libboost-system-dev`).
+Зависимости: CMake ≥ 3.10, компилятор C++, ncurses (`libncurses-dev`),
+Boost ≥ 1.66 (`libboost-system-dev`, нужны только заголовки Asio).
 
 ```sh
 cmake -S . -B build
@@ -44,13 +47,7 @@ cmake --build build
 
 Проверка сети — два терминала: в первом нажать `s`, во втором `c`.
 
-## Известные проблемы
-
-- Падение (core dump) при выходе: в `main` создаются оба объекта `Network`,
-  и деструктор неиспользованного клиента разыменовывает неинициализированный
-  `client.sock`.
-- `client.sock` и `server.acceptor` создаются через `new` и не удаляются.
-- Папка `build/` закоммичена в репозиторий, хотя указана в `.gitignore`.
+Папка `build/` в `.gitignore`, не коммитить её.
 
 ## Git
 

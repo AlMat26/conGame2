@@ -11,11 +11,14 @@ class ConRender
 {
 public:
     ConRender();
+    ConRender(const ConRender&) = delete;
+    ConRender& operator= (const ConRender&) = delete;
+
     void printxy(std::string str, int x, int y);
     void clearScr();
     void refreshScr();
 
-    char getInput();
+    int getInput();
 
     void setViewPosexy(int x, int y);
 
@@ -24,8 +27,8 @@ private:
     int m_PoseX = 0;
     int m_PoseY = 0;
 
-    unsigned int windowWidth = 0;
-    unsigned int windowHeight = 0;
+    int windowWidth = 0;
+    int windowHeight = 0;
 };
 
 #endif // CONRENDER_H

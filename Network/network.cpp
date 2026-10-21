@@ -1,50 +1,193 @@
 #include "network.h"
 
+#include <arpa/inet.h>
+
 using namespace boost::asio;
 
-Network::Network(unsigned int port, bool isServer)
+// Сообщение = 4 байта длины (big-endian) + сами данные.
+// Ограничение защищает от выделения гигабайт по мусорному заголовку.
+static const uint32_t maxMessageSize = 1024 * 1024;
+
+static bool sendMessage(ip::tcp::socket& sock, const std::string& str)
+{
+    if(str.size() > maxMessageSize)
+    {
+        return false;
+    }
+
+    uint32_t sizeOfStream = htonl(str.size());
+
+    std::vector <const_buffer> buffers;
+    buffers.push_back(buffer(&sizeOfStream, sizeof(sizeOfStream)));
+    buffers.push_back(buffer(str));
+
+    boost::system::error_code error;
+    boost::asio::write(sock, buffers, error);
+    return !error;
+}
+
+static bool receiveMessage(ip::tcp::socket& sock, std::string& str)
+{
+    uint32_t sizeOfStream = 0;
+    boost::system::error_code error;
+
+    boost::asio::read(sock, buffer(&sizeOfStream, sizeof(sizeOfStream)), error);
+    if(error)
+    {
+        return false;
+    }
+
+    sizeOfStream = ntohl(sizeOfStream);
+    if(sizeOfStream > maxMessageSize)
+    {
+        return false;
+    }
+
+    str.resize(sizeOfStream);
+    boost::asio::read(sock, buffer(str), error);
+    return !error;
+}
+
+NetworkServer::NetworkServer(unsigned int port)
 {
     this -> port = port;
-    this -> is_server = isServer;
 }
 
-void Network::connectTo(std::string ip)
+bool NetworkServer::acceptConnection()
 {
-    ip::tcp::endpoint endpoint (ip::address::from_string(ip), port);
-    client.sock = new ip::tcp::socket (IOservice);
-    client.sock -> connect(endpoint);
-}
+    boost::system::error_code error;
 
-void Network::acceptConnection()
-{
-    ip::tcp::endpoint endpoint (ip::tcp::v4(), port);
-    server.acceptor = new ip::tcp::acceptor (IOservice, endpoint);
-    server.clientSockets.push_back(ip::tcp::socket(IOservice));
-    server.acceptor -> accept(server.clientSockets[server.clientSockets.size() - 1]);
-}
-
-/*void Network::recive(char *str)
-{
-    int sizeOfStream;
-    client.sock->read_some(buffer(sizeOfStream, sizeof(int)));
-}*/
-
-Network::~Network()
-{
-    if(is_server)
+    if(acceptor == nullptr)
     {
-        for (int i = 0; i < server.clientSockets.size(); i++)
+        ip::tcp::endpoint endpoint (ip::tcp::v4(), port);
+        acceptor = new ip::tcp::acceptor (IOservice);
+
+        acceptor -> open(endpoint.protocol(), error);
+        if(!error)
         {
-            if(server.clientSockets[i].is_open())
-            {
-                server.clientSockets[i].close();
-            }
+            acceptor -> set_option(ip::tcp::acceptor::reuse_address(true), error);
         }
-    } else
+        if(!error)
+        {
+            acceptor -> bind(endpoint, error);
+        }
+        if(!error)
+        {
+            acceptor -> listen(socket_base::max_listen_connections, error);
+        }
+
+        if(error)
+        {
+            delete acceptor;
+            acceptor = nullptr;
+            return false;
+        }
+    }
+
+    clientSockets.push_back(ip::tcp::socket(IOservice));
+    acceptor -> accept(clientSockets[clientSockets.size() - 1], error);
+
+    if(error)
     {
-        if(client.sock -> is_open())
+        clientSockets.pop_back();
+        return false;
+    }
+    return true;
+}
+
+size_t NetworkServer::clientsCount()
+{
+    return clientSockets.size();
+}
+
+bool NetworkServer::send(const std::string& str, size_t id)
+{
+    if(id >= clientSockets.size())
+    {
+        return false;
+    }
+    return sendMessage(clientSockets[id], str);
+}
+
+bool NetworkServer::receive(std::string& str, size_t id)
+{
+    if(id >= clientSockets.size())
+    {
+        return false;
+    }
+    return receiveMessage(clientSockets[id], str);
+}
+
+NetworkServer::~NetworkServer()
+{
+    boost::system::error_code error;
+
+    for (size_t i = 0; i < clientSockets.size(); i++)
+    {
+        if(clientSockets[i].is_open())
         {
-            client.sock -> close();
+            clientSockets[i].close(error);
         }
+    }
+
+    delete acceptor;
+}
+
+NetworkClient::NetworkClient(unsigned int port)
+{
+    this -> port = port;
+}
+
+bool NetworkClient::connectTo(std::string ip)
+{
+    boost::system::error_code error;
+
+    ip::address address = ip::make_address(ip, error);
+    if(error)
+    {
+        return false;
+    }
+
+    if(sock == nullptr)
+    {
+        sock = new ip::tcp::socket (IOservice);
+    } else if (sock -> is_open())
+    {
+        sock -> close(error);
+    }
+
+    ip::tcp::endpoint endpoint (address, port);
+    sock -> connect(endpoint, error);
+    return !error;
+}
+
+bool NetworkClient::send(const std::string& str)
+{
+    if(sock == nullptr)
+    {
+        return false;
+    }
+    return sendMessage(*sock, str);
+}
+
+bool NetworkClient::receive(std::string& str)
+{
+    if(sock == nullptr)
+    {
+        return false;
+    }
+    return receiveMessage(*sock, str);
+}
+
+NetworkClient::~NetworkClient()
+{
+    if(sock != nullptr)
+    {
+        boost::system::error_code error;
+        if(sock -> is_open())
+        {
+            sock -> close(error);
+        }
+        delete sock;
     }
 }

@@ -57,7 +57,7 @@ target_link_libraries(networklib ${Boost_LIBRARIES})
 
 | Что                    | Стиль                              | Примеры                                        |
 |------------------------|------------------------------------|------------------------------------------------|
-| Классы, структуры      | PascalCase                         | `ConRender`, `Network`, `NetworkServer`        |
+| Классы, структуры      | PascalCase                         | `ConRender`, `NetworkServer`, `NetworkClient`  |
 | Методы                 | camelCase, глагол + существительное | `clearScr`, `refreshScr`, `connectTo`, `acceptConnection`, `getInput` |
 | Сокращения в именах    | допустимы и приветствуются         | `Scr` (screen), `xy` в `printxy`               |
 | Параметры, локальные   | camelCase                          | `isServer`, `inp`, `endpoint`                  |
@@ -65,7 +65,7 @@ target_link_libraries(networklib ${Boost_LIBRARIES})
 | Include guard          | `ИМЯФАЙЛА_H`                       | `CONRENDER_H`, `NETWORK_H`                     |
 
 Поля класса в старом коде именуются по-разному (`m_PoseX`, `windowWidth`,
-`is_server`, `IOservice`). Правило: **в существующем классе следовать тому,
+`IOservice`, `clientSockets`). Правило: **в существующем классе следовать тому,
 как названы соседние поля этого класса; существующие имена не переименовывать.**
 В новых классах — camelCase без префикса (`port`, `windowWidth`), как в большинстве полей.
 
@@ -80,7 +80,7 @@ target_link_libraries(networklib ${Boost_LIBRARIES})
 методов и блоков `if` / `for`.
 
 ```cpp
-void Network::acceptConnection()
+bool NetworkServer::acceptConnection()
 {
     ...
 }
@@ -112,8 +112,8 @@ if(inp == 's')
   `initscr ();`. В остальных модулях — обычные вызовы `connect(endpoint)`.
   **Следовать стилю файла, который редактируется.**
 - Пробел перед скобкой при конструировании объекта:
-  `Network networkC (9999, false);`, `new ip::tcp::socket (IOservice)`.
-- Пробелы вокруг `->`: `this -> port = port;`, `client.sock -> connect(endpoint);`.
+  `NetworkServer networkS (9999);`, `new ip::tcp::socket (IOservice)`.
+- Пробелы вокруг `->`: `this -> port = port;`, `sock -> connect(endpoint, error);`.
 - Пробел перед угловыми скобками шаблона: `std::vector <boost::asio::ip::tcp::socket>`.
 - Пустая строка между определениями функций, пустая строка после `#include`.
 
@@ -134,8 +134,7 @@ mvprintw( -y + m_PoseY + windowHeight/2,
 - Связанные методы группируются, между группами — пустая строка.
 - Поля инициализируются прямо в объявлении, если значение по умолчанию известно:
   `int m_PoseX = 0;`.
-- Простые наборы данных без поведения — `struct` с публичными полями
-  (`NetworkClient`, `NetworkServer`), объединяемые в классе-владельце.
+- Простые наборы данных без поведения — `struct` с публичными полями.
 - Методы, которые ещё не реализованы, допустимо оставлять закомментированными
   в заголовке как план (`/* void send (char* str); */`). Реализованные — раскомментировать.
 - В конструкторе с одноимёнными параметрами — `this -> port = port;`.
@@ -156,8 +155,8 @@ mvprintw( -y + m_PoseY + windowHeight/2,
 Старый код содержал ошибки. Их не нужно воспроизводить в новом коде,
 а при правке — нужно исправлять:
 
-1. **Каждому `new` — свой `delete`.** Указатели-члены (`client.sock`,
-   `server.acceptor`) инициализируются `nullptr` в объявлении, освобождаются
+1. **Каждому `new` — свой `delete`.** Указатели-члены (`sock`,
+   `acceptor`) инициализируются `nullptr` в объявлении, освобождаются
    в деструкторе, перед разыменованием проверяются на `nullptr`.
    Сырые указатели как таковые — часть стиля и разрешены; `std::unique_ptr`
    тоже допустим, если так проще.

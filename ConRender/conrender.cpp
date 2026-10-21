@@ -3,6 +3,7 @@
 ConRender::ConRender()
 {
     initscr ();
+    cbreak ();
     start_color ();
     curs_set ( 0 );
     noecho ();
@@ -18,6 +19,7 @@ void ConRender::printxy ( std::string str, int x, int y )
 {
     mvprintw( -y + m_PoseY + windowHeight/2,
               x + m_PoseX + windowWidth/2,
+              "%s",
               str.c_str() );
 }
 
@@ -32,9 +34,9 @@ void ConRender::refreshScr()
     refresh ();
 }
 
-char ConRender::getInput()
+int ConRender::getInput()
 {
-    return getchar();
+    return getch();
 }
 
 void ConRender::setViewPosexy ( int x, int y )

@@ -5,37 +5,46 @@
 #include <vector>
 #include <string>
 
-struct NetworkClient
+class NetworkServer
 {
-    boost::asio::ip::tcp::socket* sock;
-};
+public:
+    NetworkServer(unsigned int port);
+    NetworkServer(const NetworkServer&) = delete;
+    NetworkServer& operator= (const NetworkServer&) = delete;
 
-struct NetworkServer
-{
-    boost::asio::ip::tcp::acceptor* acceptor;
+    bool acceptConnection ();
+    size_t clientsCount ();
+
+    bool send (const std::string& str, size_t id);
+    bool receive (std::string& str, size_t id);
+
+    ~NetworkServer ();
+private:
+    unsigned int port;
+    boost::asio::io_context IOservice;
+
+    boost::asio::ip::tcp::acceptor* acceptor = nullptr;
     std::vector <boost::asio::ip::tcp::socket> clientSockets;
 };
 
-class Network
+class NetworkClient
 {
 public:
-    Network(unsigned int port, bool isServer);
-    void connectTo(std::string ip);
-    void acceptConnection ();
+    NetworkClient(unsigned int port);
+    NetworkClient(const NetworkClient&) = delete;
+    NetworkClient& operator= (const NetworkClient&) = delete;
 
-    /*void recive(char* str);
-    void send (char* str);
+    bool connectTo(std::string ip);
 
-    void recive(char* str, int id);
-    void send (char* str, int id);*/
-    ~Network ();
+    bool send (const std::string& str);
+    bool receive (std::string& str);
+
+    ~NetworkClient ();
 private:
-    bool is_server;
     unsigned int port;
-    boost::asio::io_service IOservice;
+    boost::asio::io_context IOservice;
 
-    NetworkClient client;
-    NetworkServer server;
+    boost::asio::ip::tcp::socket* sock = nullptr;
 };
 
-#endif
+#endif // NETWORK_H
