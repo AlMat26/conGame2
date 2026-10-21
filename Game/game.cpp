@@ -22,6 +22,7 @@ const int noteTimeMs = 2500;
 const int woodFromTree = 2;
 const int woodFromSupport = 1;
 const int woodPerTunnel = 1;
+const int woodPerBuilding = 1;
 
 // Обвалы: свод держится, если рядом крепь или стена, или если выработка узкая —
 // в квадрате 3×3 вокруг клетки меньше collapseOpenCells выкопанных клеток
@@ -359,6 +360,9 @@ bool Game::tryDig(int id, int dx, int dy)
     if(tile == Tile::Support)
     {
         player.wood += woodFromSupport;
+    } else if (tile == Tile::Wall || tile == Tile::Bridge)
+    {
+        player.wood += woodPerBuilding;
     } else if (tile == Tile::Ore)
     {
         player.ore++;
@@ -382,7 +386,8 @@ bool Game::tryDig(int id, int dx, int dy)
         checkCeiling(id, x, y, z);
     }
 
-    if(tile == Tile::Tree || tile == Tile::Support || tile == Tile::Ore || usedWood)
+    if(tile == Tile::Tree || tile == Tile::Support || tile == Tile::Wall || tile == Tile::Bridge
+       || tile == Tile::Ore || usedWood)
     {
         sendInventory(id);
     }
@@ -403,18 +408,30 @@ bool Game::tryBuild(int id, int dx, int dy)
     }
 
     Tile tile = world -> getTile(x, y, z);
+    Tile result = tile;
     if(isWater(tile))
     {
-        changeTile(x, y, z, Tile::Bridge);
+        result = Tile::Bridge;
     } else if (tile == Tile::Grass || tile == Tile::Sand || tile == Tile::RockFloor || tile == Tile::Sapling)
     {
-        changeTile(x, y, z, Tile::Wall);
+        result = Tile::Wall;
     } else
     {
         return false;
     }
 
     player.lastActionMs = now;
+
+    // Стены и мосты строятся из дерева, при разборе оно возвращается
+    if(player.wood < woodPerBuilding)
+    {
+        notify(id, "Need wood");
+        return false;
+    }
+
+    player.wood -= woodPerBuilding;
+    changeTile(x, y, z, result);
+    sendInventory(id);
     return true;
 }
 
