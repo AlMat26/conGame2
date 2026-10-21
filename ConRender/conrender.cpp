@@ -20,9 +20,19 @@ ConRender::ConRender()
 
 void ConRender::printxy ( std::string str, int x, int y, short color )
 {
-    int row = -y + m_PoseY + windowHeight/2;
-    int col = x + m_PoseX + windowWidth/2;
+    printClipped ( str,
+                   -y + m_PoseY + windowHeight/2,
+                   x + m_PoseX + windowWidth/2,
+                   color );
+}
 
+void ConRender::printScr ( std::string str, int col, int row, short color )
+{
+    printClipped ( str, row, col, color );
+}
+
+void ConRender::printClipped ( std::string str, int row, int col, short color )
+{
     if ( row < 0 || row >= windowHeight )
     {
         return;

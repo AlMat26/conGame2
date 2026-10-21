@@ -15,6 +15,7 @@ public:
     ConRender& operator= (const ConRender&) = delete;
 
     void printxy(std::string str, int x, int y, short color = 1);
+    void printScr(std::string str, int col, int row, short color = 1);
     void clearScr();
     void refreshScr();
 
@@ -30,6 +31,7 @@ public:
 
     ~ConRender();
 private:
+    void printClipped(std::string str, int row, int col, short color);
     void updateSize();
 
     int m_PoseX = 0;

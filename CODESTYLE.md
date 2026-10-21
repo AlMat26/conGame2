@@ -14,15 +14,16 @@
 
 ## Структура проекта
 
-- Каждый модуль — отдельная папка с именем в PascalCase (`ConRender/`, `Network/`)
+- Каждый модуль — отдельная папка с именем в PascalCase (`ConRender/`, `Network/`,
+  `World/`, `Game/`)
   со своим `CMakeLists.txt` и статической библиотекой `<имя>lib`
   (`conrenderlib`, `networklib`).
 - Внутри модуля файлы в нижнем регистре: `conrender.h` / `conrender.cpp`,
   `network.h` / `network.cpp`. Один основной класс на пару файлов.
 - Корневой `CMakeLists.txt` подключает модули через `add_subdirectory`
   и линкует их к исполняемому файлу `congame`.
-- Подключение модулей из `main.cpp` — с путём к папке:
-  `#include "ConRender/conrender.h"`.
+- Подключение чужих модулей — с путём от корня проекта (корень добавлен
+  в `include_directories`): `#include "ConRender/conrender.h"`.
 - Внутри модуля — просто `#include "conrender.h"`.
 
 ### CMake модуля
@@ -63,6 +64,8 @@ target_link_libraries(networklib ${Boost_LIBRARIES})
 | Параметры, локальные   | camelCase                          | `isServer`, `inp`, `endpoint`                  |
 | Объекты в `main`       | camelCase + суффикс роли           | `networkC`, `networkS`, `renderer`             |
 | Include guard          | `ИМЯФАЙЛА_H`                       | `CONRENDER_H`, `NETWORK_H`                     |
+| Перечисления           | `enum class`, всё в PascalCase     | `Tile::DeepWater`, `Tile::Grass`               |
+| Константы              | `const` + camelCase, без `#define` | `chunkSize`, `defaultPort`, `frameTimeMs`      |
 
 Поля класса в старом коде именуются по-разному (`m_PoseX`, `windowWidth`,
 `IOservice`, `clientSockets`). Правило: **в существующем классе следовать тому,
@@ -116,6 +119,23 @@ if(inp == 's')
 - Пробелы вокруг `->`: `this -> port = port;`, `sock -> connect(endpoint, error);`.
 - Пробел перед угловыми скобками шаблона: `std::vector <boost::asio::ip::tcp::socket>`.
 - Пустая строка между определениями функций, пустая строка после `#include`.
+
+### switch
+
+`case` на одном уровне со `switch`, тело — с отступом, `break` в каждом `case`:
+
+```cpp
+switch(key)
+{
+case KEY_UP:
+case 'w':
+    movePlayer(0, 1);
+    break;
+case 'q':
+    running = false;
+    break;
+}
+```
 
 ### Многострочные вызовы
 
