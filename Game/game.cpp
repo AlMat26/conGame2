@@ -23,6 +23,7 @@ const int woodFromTree = 2;
 const int woodFromSupport = 1;
 const int woodPerTunnel = 1;
 const int woodPerBuilding = 1;
+const int woodPerTorch = 1;
 
 // Обвалы: свод держится, если рядом крепь или стена, или если выработка узкая —
 // в квадрате 3×3 вокруг клетки меньше collapseOpenCells выкопанных клеток
@@ -36,6 +37,7 @@ const int caveInHearRadius = 12;
 // 2 — полутень, 3 и больше — светло
 const int fullLight = 3;
 const int playerLightPower = 8;
+const int torchLightPower = 10;
 
 static long nowMs()
 {
@@ -92,8 +94,10 @@ Game::Game(ConRender* renderer)
     setLook(Tile::LadderDown, ">", COLOR_YELLOW, true);
     setLook(Tile::LadderUp, "<", COLOR_YELLOW, true);
     setLook(Tile::Rubble, "%", COLOR_WHITE, true);
+    setLook(Tile::Torch, "i", COLOR_YELLOW, true);
 
     foamColor = renderer -> addColor(COLOR_WHITE, COLOR_BLACK, true);
+    flameColor = renderer -> addColor(COLOR_RED, COLOR_BLACK, true);
     shadowColor = renderer -> addColor(COLOR_BLUE, COLOR_BLACK);
     damagedColor = renderer -> addColor(COLOR_RED, COLOR_BLACK, true);
     damagedHighlight = renderer -> addColor(COLOR_BLACK, COLOR_RED);
@@ -326,7 +330,7 @@ bool Game::tryDig(int id, int dx, int dy)
     } else if (tile == Tile::Rock || tile == Tile::Ore || tile == Tile::Support || tile == Tile::Rubble)
     {
         result = Tile::RockFloor;
-    } else if (tile == Tile::Wall || (tile == Tile::Bridge && !isPlayerAt(x, y, z)))
+    } else if (tile == Tile::Wall || tile == Tile::Torch || (tile == Tile::Bridge && !isPlayerAt(x, y, z)))
     {
         result = world -> getGroundTile(x, y, z);
     } else
@@ -363,6 +367,9 @@ bool Game::tryDig(int id, int dx, int dy)
     } else if (tile == Tile::Wall || tile == Tile::Bridge)
     {
         player.wood += woodPerBuilding;
+    } else if (tile == Tile::Torch)
+    {
+        player.wood += woodPerTorch;
     } else if (tile == Tile::Ore)
     {
         player.ore++;
@@ -373,7 +380,8 @@ bool Game::tryDig(int id, int dx, int dy)
     // Под землёй выкопанное игроком может обвалиться. Если есть дерево —
     // проход сразу укрепляется крепью по бокам
     bool usedWood = false;
-    if(z < 0 && result == Tile::RockFloor)
+    bool opened = tile == Tile::Rock || tile == Tile::Ore || tile == Tile::Rubble || tile == Tile::Support;
+    if(z < 0 && opened)
     {
         dugCells.insert(key);
 
@@ -387,7 +395,7 @@ bool Game::tryDig(int id, int dx, int dy)
     }
 
     if(tile == Tile::Tree || tile == Tile::Support || tile == Tile::Wall || tile == Tile::Bridge
-       || tile == Tile::Ore || usedWood)
+       || tile == Tile::Torch || tile == Tile::Ore || usedWood)
     {
         sendInventory(id);
     }
@@ -431,6 +439,40 @@ bool Game::tryBuild(int id, int dx, int dy)
 
     player.wood -= woodPerBuilding;
     changeTile(x, y, z, result);
+    sendInventory(id);
+    return true;
+}
+
+// Факел ставится на пол перед собой. По нему можно ходить, свод он не держит
+bool Game::tryPlaceTorch(int id, int dx, int dy)
+{
+    Player& player = players[id];
+    long now = nowMs();
+    int x = player.x + dx;
+    int y = player.y + dy;
+    int z = player.z;
+
+    if(now - player.lastActionMs < actionCooldownMs || !world -> isInside(x, y, z) || isPlayerAt(x, y, z))
+    {
+        return false;
+    }
+
+    Tile tile = world -> getTile(x, y, z);
+    if(tile != Tile::RockFloor && tile != Tile::Grass && tile != Tile::Sand)
+    {
+        return false;
+    }
+
+    player.lastActionMs = now;
+
+    if(player.wood < woodPerTorch)
+    {
+        notify(id, "Need wood");
+        return false;
+    }
+
+    player.wood -= woodPerTorch;
+    changeTile(x, y, z, Tile::Torch);
     sendInventory(id);
     return true;
 }
@@ -549,7 +591,8 @@ void Game::changeTile(int x, int y, int z, Tile tile)
     world -> setTile(x, y, z, tile);
     changedTiles[cellKey(x, y, z)] = tile;
     damages.erase(cellKey(x, y, z));
-    if(tile != Tile::RockFloor)
+    // Выкопанная клетка остаётся выкопанной и под стеной или факелом, пока её не завалит
+    if(tile == Tile::Rubble)
     {
         dugCells.erase(cellKey(x, y, z));
     }
@@ -675,10 +718,13 @@ void Game::handleInput(int key)
         movePlayer(1, 0);
         break;
     case 'e':
-        doAction(true);
+        doAction("DIG");
         break;
     case 'r':
-        doAction(false);
+        doAction("BUILD");
+        break;
+    case 't':
+        doAction("TORCH");
         break;
     case 'q':
         running = false;
@@ -704,21 +750,23 @@ void Game::movePlayer(int dx, int dy)
     }
 }
 
-void Game::doAction(bool dig)
+void Game::doAction(std::string type)
 {
     if(client != nullptr)
     {
-        std::string type = dig ? "DIG " : "BUILD ";
-        client -> send(type + std::to_string(facingX) + " " + std::to_string(facingY));
+        client -> send(type + " " + std::to_string(facingX) + " " + std::to_string(facingY));
         return;
     }
 
-    if(dig)
+    if(type == "DIG")
     {
         tryDig(myId, facingX, facingY);
-    } else
+    } else if (type == "BUILD")
     {
         tryBuild(myId, facingX, facingY);
+    } else if (type == "TORCH")
+    {
+        tryPlaceTorch(myId, facingX, facingY);
     }
 }
 
@@ -813,6 +861,9 @@ void Game::handleClientMessage(int id, const std::string& text)
     } else if (type == "BUILD")
     {
         tryBuild(id, dx, dy);
+    } else if (type == "TORCH")
+    {
+        tryPlaceTorch(id, dx, dy);
     }
 }
 
@@ -958,8 +1009,9 @@ void Game::handleHostMessage(const std::string& text)
     }
 }
 
-// Сейчас свет несут только игроки. Факелы добавятся сюда же — ещё одним видом источника
-void Game::collectLights(int z, std::vector <LightSource>& lights)
+// Источники света на уровне: игроки и факелы. Факелы ищутся в прямоугольнике
+// экрана, расширенном на их силу — факел за краем экрана тоже светит на экран
+void Game::collectLights(int z, int left, int bottom, int width, int height, std::vector <LightSource>& lights)
 {
     for (int i = 0; i < maxPlayers; i++)
     {
@@ -972,6 +1024,28 @@ void Game::collectLights(int z, std::vector <LightSource>& lights)
             lights.push_back(light);
         }
     }
+
+    for (int y = bottom - torchLightPower; y < bottom + height + torchLightPower; y++)
+    {
+        for (int x = left - torchLightPower; x < left + width + torchLightPower; x++)
+        {
+            if(world -> getTile(x, y, z) == Tile::Torch)
+            {
+                LightSource light;
+                light.x = x;
+                light.y = y;
+                light.power = torchLightPower - getFlicker(x, y);
+                lights.push_back(light);
+            }
+        }
+    }
+}
+
+// Пламя факела иногда приседает: 1 — в этот момент он светит чуть слабее
+int Game::getFlicker(int x, int y)
+{
+    unsigned int noise = ((unsigned int)x * 73856093u) ^ ((unsigned int)y * 19349663u);
+    return (animationTime + (noise >> 8) % 5) % 5 == 0 ? 1 : 0;
 }
 
 // Освещённость считается для прямоугольника экрана: от каждого источника
@@ -985,7 +1059,7 @@ void Game::computeLight(int z, int left, int bottom, int width, int height)
     lightMap.assign(width * height, 0);
 
     std::vector <LightSource> lights;
-    collectLights(z, lights);
+    collectLights(z, left, bottom, width, height, lights);
 
     for (size_t i = 0; i < lights.size(); i++)
     {
@@ -1194,6 +1268,11 @@ void Game::drawTile(int x, int y, int z, bool highlight)
         }
     }
 
+    if(tile == Tile::Torch && getFlicker(x, y) == 1 && !highlight)
+    {
+        color = flameColor;
+    }
+
     if(world -> isInside(x, y, z) && damages.count(cellKey(x, y, z)) > 0)
     {
         color = highlight ? damagedHighlight : damagedColor;
@@ -1249,7 +1328,7 @@ void Game::drawHud()
     }
 
     std::string bottom = " wood:" + std::to_string(me.wood) + " ore:" + std::to_string(me.ore)
-                         + "  WASD - move, e - dig, r - build, q - quit ";
+                         + "  WASD - move, e - dig, r - build, t - torch, q - quit ";
     renderer -> printScr(bottom, 0, renderer -> getHeight() - 1, hudColor);
 }
 

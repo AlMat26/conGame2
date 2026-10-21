@@ -72,6 +72,7 @@ private:
     bool tryMove(int id, int dx, int dy);
     bool tryDig(int id, int dx, int dy);
     bool tryBuild(int id, int dx, int dy);
+    bool tryPlaceTorch(int id, int dx, int dy);
     void placeSupports(int x, int y, int z, int dx, int dy);
     bool isDug(int x, int y, int z);
     bool isStable(int x, int y, int z);
@@ -87,7 +88,7 @@ private:
 
     void handleInput(int key);
     void movePlayer(int dx, int dy);
-    void doAction(bool dig);
+    void doAction(std::string type);
 
     void acceptPlayers();
     void receiveFromClients();
@@ -101,7 +102,8 @@ private:
     void receiveFromHost();
     void handleHostMessage(const std::string& text);
 
-    void collectLights(int z, std::vector <LightSource>& lights);
+    void collectLights(int z, int left, int bottom, int width, int height, std::vector <LightSource>& lights);
+    int getFlicker(int x, int y);
     void computeLight(int z, int left, int bottom, int width, int height);
     bool isLineClear(int fromX, int fromY, int toX, int toY, int z);
     int getLight(int x, int y, int z);
@@ -145,6 +147,7 @@ private:
     short playerColors[maxPlayers];
     short hudColor = 1;
     short foamColor = 1;
+    short flameColor = 1;
     short shadowColor = 1;
     short damagedColor = 1;
     short damagedHighlight = 1;

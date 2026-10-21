@@ -20,10 +20,11 @@ enum class Tile
     Ore,
     LadderDown,
     LadderUp,
-    Rubble
+    Rubble,
+    Torch
 };
 
-const int tileTypesCount = 15;
+const int tileTypesCount = 16;
 const int chunkSize = 32;
 const int mineDepth = 8;
 
