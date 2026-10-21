@@ -9,6 +9,7 @@ const int worldSizeInChunks = 8;
 const int frameTimeMs = 30;
 const int waterFrameMs = 250;
 const int moveCooldownMs = 30;
+const int actionCooldownMs = 150;
 const int joinTimeoutMs = 5000;
 
 static long nowMs()
@@ -21,17 +22,15 @@ Game::Game(ConRender* renderer)
 {
     this -> renderer = renderer;
 
-    short blue = renderer -> addColor(COLOR_BLUE, COLOR_BLACK);
-    short cyan = renderer -> addColor(COLOR_CYAN, COLOR_BLACK);
-    short yellow = renderer -> addColor(COLOR_YELLOW, COLOR_BLACK);
-    short green = renderer -> addColor(COLOR_GREEN, COLOR_BLACK);
-
-    looks[(int)Tile::DeepWater] = { "~", blue };
-    looks[(int)Tile::Water] = { "~", cyan };
-    looks[(int)Tile::Sand] = { ",", yellow };
-    looks[(int)Tile::Grass] = { ".", green };
-    looks[(int)Tile::Tree] = { "T", green };
-    looks[(int)Tile::Rock] = { "#", 1 };
+    setLook(Tile::DeepWater, "~", COLOR_BLUE);
+    setLook(Tile::Water, "~", COLOR_CYAN);
+    setLook(Tile::Sand, ",", COLOR_YELLOW);
+    setLook(Tile::Grass, ".", COLOR_GREEN);
+    setLook(Tile::Tree, "T", COLOR_GREEN);
+    setLook(Tile::Rock, "#", COLOR_WHITE);
+    setLook(Tile::RockFloor, ".", COLOR_WHITE);
+    setLook(Tile::Wall, "#", COLOR_YELLOW);
+    setLook(Tile::Bridge, "=", COLOR_YELLOW);
 
     playerColors[0] = renderer -> addColor(COLOR_BLACK, COLOR_YELLOW);
     playerColors[1] = renderer -> addColor(COLOR_BLACK, COLOR_CYAN);
@@ -143,6 +142,15 @@ std::string Game::getMessage()
     return message;
 }
 
+// Обычный вид — цветной символ на чёрном, подсветка (клетка перед игроком) — наоборот
+void Game::setLook(Tile tile, std::string glyph, short foreground)
+{
+    TileLook& look = looks[(int)tile];
+    look.glyph = glyph;
+    look.color = renderer -> addColor(foreground, COLOR_BLACK);
+    look.highlight = renderer -> addColor(COLOR_BLACK, foreground);
+}
+
 void Game::createWorld(unsigned int seed)
 {
     delete world;
@@ -175,21 +183,21 @@ bool Game::spawnPlayer(int id)
     return false;
 }
 
-bool Game::isFree(int x, int y)
+bool Game::isPlayerAt(int x, int y)
 {
-    if(!world -> isWalkable(x, y))
-    {
-        return false;
-    }
-
     for (int i = 0; i < maxPlayers; i++)
     {
         if(players[i].active && players[i].x == x && players[i].y == y)
         {
-            return false;
+            return true;
         }
     }
-    return true;
+    return false;
+}
+
+bool Game::isFree(int x, int y)
+{
+    return world -> isWalkable(x, y) && !isPlayerAt(x, y);
 }
 
 bool Game::tryMove(int id, int dx, int dy)
@@ -206,6 +214,77 @@ bool Game::tryMove(int id, int dx, int dy)
     player.y += dy;
     player.lastMoveMs = now;
     return true;
+}
+
+bool Game::tryDig(int id, int dx, int dy)
+{
+    Player& player = players[id];
+    long now = nowMs();
+    int x = player.x + dx;
+    int y = player.y + dy;
+
+    if(now - player.lastActionMs < actionCooldownMs)
+    {
+        return false;
+    }
+
+    Tile tile = world -> getTile(x, y);
+    if(tile == Tile::Tree)
+    {
+        changeTile(x, y, Tile::Grass);
+    } else if (tile == Tile::Rock)
+    {
+        changeTile(x, y, Tile::RockFloor);
+    } else if (tile == Tile::Wall || (tile == Tile::Bridge && !isPlayerAt(x, y)))
+    {
+        changeTile(x, y, world -> getGroundTile(x, y));
+    } else
+    {
+        return false;
+    }
+
+    player.lastActionMs = now;
+    return true;
+}
+
+bool Game::tryBuild(int id, int dx, int dy)
+{
+    Player& player = players[id];
+    long now = nowMs();
+    int x = player.x + dx;
+    int y = player.y + dy;
+
+    if(now - player.lastActionMs < actionCooldownMs || !world -> isInside(x, y) || isPlayerAt(x, y))
+    {
+        return false;
+    }
+
+    Tile tile = world -> getTile(x, y);
+    if(tile == Tile::Water || tile == Tile::DeepWater)
+    {
+        changeTile(x, y, Tile::Bridge);
+    } else if (tile == Tile::Grass || tile == Tile::Sand || tile == Tile::RockFloor)
+    {
+        changeTile(x, y, Tile::Wall);
+    } else
+    {
+        return false;
+    }
+
+    player.lastActionMs = now;
+    return true;
+}
+
+// Хост запоминает все изменения мира, чтобы отдать их тем, кто подключится позже
+void Game::changeTile(int x, int y, Tile tile)
+{
+    world -> setTile(x, y, tile);
+    changedTiles[y * world -> getWidth() + x] = tile;
+
+    if(server != nullptr)
+    {
+        broadcast(tileMessage(x, y, tile));
+    }
 }
 
 void Game::handleInput(int key)
@@ -228,6 +307,12 @@ void Game::handleInput(int key)
     case 'd':
         movePlayer(1, 0);
         break;
+    case 'e':
+        doAction(true);
+        break;
+    case 'r':
+        doAction(false);
+        break;
     case 'q':
         running = false;
         break;
@@ -237,6 +322,9 @@ void Game::handleInput(int key)
 // Клиент только сообщает о намерении, двигает игрока хост
 void Game::movePlayer(int dx, int dy)
 {
+    facingX = dx;
+    facingY = dy;
+
     if(client != nullptr)
     {
         client -> send("MOVE " + std::to_string(dx) + " " + std::to_string(dy));
@@ -246,6 +334,24 @@ void Game::movePlayer(int dx, int dy)
     if(tryMove(myId, dx, dy) && server != nullptr)
     {
         broadcast(positionMessage(myId));
+    }
+}
+
+void Game::doAction(bool dig)
+{
+    if(client != nullptr)
+    {
+        std::string type = dig ? "DIG " : "BUILD ";
+        client -> send(type + std::to_string(facingX) + " " + std::to_string(facingY));
+        return;
+    }
+
+    if(dig)
+    {
+        tryDig(myId, facingX, facingY);
+    } else
+    {
+        tryBuild(myId, facingX, facingY);
     }
 }
 
@@ -272,6 +378,13 @@ void Game::acceptPlayers()
         {
             players[id].connectionId = connectionId;
             server -> send("WELCOME " + std::to_string(id) + " " + std::to_string(world -> getSeed()), connectionId);
+
+            for (std::map <int, Tile>::iterator it = changedTiles.begin(); it != changedTiles.end(); it++)
+            {
+                int x = it -> first % world -> getWidth();
+                int y = it -> first / world -> getWidth();
+                server -> send(tileMessage(x, y, it -> second), connectionId);
+            }
 
             for (int i = 0; i < maxPlayers; i++)
             {
@@ -315,14 +428,22 @@ void Game::handleClientMessage(int id, const std::string& text)
     std::string type;
     in >> type;
 
-    if(type == "MOVE")
+    int dx = 0;
+    int dy = 0;
+    if(!(in >> dx >> dy) || std::abs(dx) + std::abs(dy) != 1)
     {
-        int dx = 0;
-        int dy = 0;
-        if(in >> dx >> dy && std::abs(dx) + std::abs(dy) == 1 && tryMove(id, dx, dy))
-        {
-            broadcast(positionMessage(id));
-        }
+        return;
+    }
+
+    if(type == "MOVE" && tryMove(id, dx, dy))
+    {
+        broadcast(positionMessage(id));
+    } else if (type == "DIG")
+    {
+        tryDig(id, dx, dy);
+    } else if (type == "BUILD")
+    {
+        tryBuild(id, dx, dy);
     }
 }
 
@@ -349,6 +470,11 @@ std::string Game::positionMessage(int id)
     return "POS " + std::to_string(id) + " " + std::to_string(players[id].x) + " " + std::to_string(players[id].y);
 }
 
+std::string Game::tileMessage(int x, int y, Tile tile)
+{
+    return "TILE " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string((int)tile);
+}
+
 void Game::receiveFromHost()
 {
     std::string text;
@@ -368,10 +494,22 @@ void Game::handleHostMessage(const std::string& text)
 {
     std::istringstream in (text);
     std::string type;
-    int id = -1;
-    in >> type >> id;
+    in >> type;
 
-    if(id < 0 || id >= maxPlayers)
+    if(type == "TILE")
+    {
+        int x = 0;
+        int y = 0;
+        int tile = -1;
+        if(in >> x >> y >> tile && tile >= 0 && tile < tileTypesCount && world -> isInside(x, y))
+        {
+            world -> setTile(x, y, (Tile)tile);
+        }
+        return;
+    }
+
+    int id = -1;
+    if(!(in >> id) || id < 0 || id >= maxPlayers)
     {
         return;
     }
@@ -415,8 +553,13 @@ void Game::draw()
     {
         for (int x = me.x - halfWidth; x <= me.x + halfWidth; x++)
         {
-            drawTile(x, y);
+            drawTile(x, y, false);
         }
+    }
+
+    if(me.active)
+    {
+        drawTile(me.x + facingX, me.y + facingY, true);
     }
 
     for (int i = 0; i < maxPlayers; i++)
@@ -435,10 +578,11 @@ void Game::draw()
     renderer -> refreshScr();
 }
 
-void Game::drawTile(int x, int y)
+void Game::drawTile(int x, int y, bool highlight)
 {
     Tile tile = world -> getTile(x, y);
     TileLook& look = looks[(int)tile];
+    short color = highlight ? look.highlight : look.color;
 
     if(tile == Tile::DeepWater || tile == Tile::Water)
     {
@@ -447,12 +591,12 @@ void Game::drawTile(int x, int y)
         long phase = x + 2 * y + animationTime + (noise >> 7) % 3;
         if(phase % 11 == 0)
         {
-            renderer -> printxy("-", x, y, look.color);
+            renderer -> printxy("-", x, y, color);
             return;
         }
     }
 
-    renderer -> printxy(look.glyph, x, y, look.color);
+    renderer -> printxy(look.glyph, x, y, color);
 }
 
 void Game::drawHud()
@@ -480,7 +624,7 @@ void Game::drawHud()
     renderer -> printScr(info, 0, 0, hudColor);
     renderer -> printScr("@", info.size() + 1, 0, playerColors[myId]);
 
-    std::string help = " arrows/WASD - move, q - quit ";
+    std::string help = " arrows/WASD - move, e - dig, r - build, q - quit ";
     renderer -> printScr(help, 0, renderer -> getHeight() - 1, hudColor);
 }
 

@@ -10,9 +10,13 @@ enum class Tile
     Sand,
     Grass,
     Tree,
-    Rock
+    Rock,
+    RockFloor,
+    Wall,
+    Bridge
 };
 
+const int tileTypesCount = 9;
 const int chunkSize = 32;
 
 struct Chunk
@@ -30,6 +34,8 @@ public:
     Tile getTile(int x, int y);
     void setTile(int x, int y, Tile tile);
 
+    Tile getGroundTile(int x, int y);
+    bool isInside(int x, int y);
     bool isWalkable(int x, int y);
     bool findSpawn(int& x, int& y);
 

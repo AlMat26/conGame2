@@ -64,7 +64,7 @@ World::World(int widthInChunks, int heightInChunks, unsigned int seed)
 
 Tile World::getTile(int x, int y)
 {
-    if(x < 0 || y < 0 || x >= getWidth() || y >= getHeight())
+    if(!isInside(x, y))
     {
         return Tile::DeepWater;
     }
@@ -75,7 +75,7 @@ Tile World::getTile(int x, int y)
 
 void World::setTile(int x, int y, Tile tile)
 {
-    if(x < 0 || y < 0 || x >= getWidth() || y >= getHeight())
+    if(!isInside(x, y))
     {
         return;
     }
@@ -84,10 +84,31 @@ void World::setTile(int x, int y, Tile tile)
     chunk -> tiles[y % chunkSize][x % chunkSize] = tile;
 }
 
+// Что лежит под постройкой или под выкопанной скалой — берётся из генератора,
+// поэтому хранить это отдельно не нужно
+Tile World::getGroundTile(int x, int y)
+{
+    Tile tile = generateTile(x, y);
+
+    if(tile == Tile::Rock)
+    {
+        return Tile::RockFloor;
+    } else if (tile == Tile::Tree)
+    {
+        return Tile::Grass;
+    }
+    return tile;
+}
+
+bool World::isInside(int x, int y)
+{
+    return x >= 0 && y >= 0 && x < getWidth() && y < getHeight();
+}
+
 bool World::isWalkable(int x, int y)
 {
     Tile tile = getTile(x, y);
-    return tile != Tile::DeepWater && tile != Tile::Tree && tile != Tile::Rock;
+    return tile != Tile::DeepWater && tile != Tile::Tree && tile != Tile::Rock && tile != Tile::Wall;
 }
 
 bool World::findSpawn(int& x, int& y)
