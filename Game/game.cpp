@@ -22,6 +22,7 @@ const int noteTimeMs = 2500;
 const int woodFromTree = 2;
 const int woodFromSupport = 1;
 const int woodPerTunnel = 1;
+const int supportStep = 3;
 const int woodPerBuilding = 1;
 const int woodPerTorch = 1;
 
@@ -378,18 +379,19 @@ bool Game::tryDig(int id, int dx, int dy)
     changeTile(x, y, z, result);
 
     // Под землёй выкопанное игроком может обвалиться. Если есть дерево —
-    // проход сразу укрепляется крепью по бокам
+    // проход укрепляется крепью по бокам через каждые две клетки
     bool usedWood = false;
     bool opened = tile == Tile::Rock || tile == Tile::Ore || tile == Tile::Rubble || tile == Tile::Support;
     if(z < 0 && opened)
     {
         dugCells.insert(key);
 
-        if(tile != Tile::Support && player.wood >= woodPerTunnel)
+        int along = dx != 0 ? x : y;
+        if(tile != Tile::Support && along % supportStep == 0 && player.wood >= woodPerTunnel
+           && placeSupports(x, y, z, dx, dy))
         {
             player.wood -= woodPerTunnel;
             usedWood = true;
-            placeSupports(x, y, z, dx, dy);
         }
         checkCeiling(id, x, y, z);
     }
@@ -478,18 +480,21 @@ bool Game::tryPlaceTorch(int id, int dx, int dy)
 }
 
 // Крепь встаёт по бокам прохода — там, где осталась сплошная порода
-void Game::placeSupports(int x, int y, int z, int dx, int dy)
+bool Game::placeSupports(int x, int y, int z, int dx, int dy)
 {
     int sideX[2] = { x + dy, x - dy };
     int sideY[2] = { y + dx, y - dx };
+    bool placed = false;
 
     for (int i = 0; i < 2; i++)
     {
         if(world -> getTile(sideX[i], sideY[i], z) == Tile::Rock && world -> isInside(sideX[i], sideY[i], z))
         {
             changeTile(sideX[i], sideY[i], z, Tile::Support);
+            placed = true;
         }
     }
+    return placed;
 }
 
 bool Game::isDug(int x, int y, int z)

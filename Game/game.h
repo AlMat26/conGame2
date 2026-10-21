@@ -73,7 +73,7 @@ private:
     bool tryDig(int id, int dx, int dy);
     bool tryBuild(int id, int dx, int dy);
     bool tryPlaceTorch(int id, int dx, int dy);
-    void placeSupports(int x, int y, int z, int dx, int dy);
+    bool placeSupports(int x, int y, int z, int dx, int dy);
     bool isDug(int x, int y, int z);
     bool isStable(int x, int y, int z);
     void checkCeiling(int id, int x, int y, int z);
